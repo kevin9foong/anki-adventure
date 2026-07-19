@@ -21,12 +21,12 @@ Fantasy ↔ learning mapping:
 - Formula: `damage = round(basePower × gradeMultiplier)`
 - Grade multipliers:
 
-| Grade | Multiplier | Feel |
-|--------|------------|------|
-| Again | 0.3x | Weak hit
-| Hard | 0.5× | Glancing blow |
-| Good | 1.0× | Normal hit |
-| Easy | 1.5× | Strong / crit-ish |
+| Grade | Multiplier | Next enemy attack | Feel |
+|--------|------------|-------------------|------|
+| Again | 0.3x | Normal damage | Weak hit |
+| Hard | 0.5× | Normal damage | Glancing blow |
+| Good | 1.0× | 0.7× damage | Normal hit |
+| Easy | 1.5× | No damage | Strong / crit-ish |
 
 - **Wild monsters:** a few distinct types with different sprites for MVP (suggesting 3 per location, inspired by what the location might be known/unique for, for example near Naruto whirlpools, there might be whirlpool monsters). Same battle rules; different HP/basePower/art.
 - **Enemy scaling (MVP, locked):** encounter level is fixed at battle start. It is selected from the lowest non-fainted party level through the highest non-fainted party level + 5, excluding fainted monsters. Wilds are uniform; route trainers weight higher levels linearly; gym trainers weight them quadratically; gym leaders use the maximum.
@@ -103,7 +103,7 @@ MVP reviews are Japanese → English only. No typed answers or automatic answer 
 - The same formulas apply to player and enemy monsters. Level-up increases current HP by the max-HP increase, except a fainted monster remains at 0 HP.
 - Player damage is `round(player basePower × grade multiplier)`; there is no separate level factor.
 - Grade multipliers: Again 0.3×, Hard 0.5×, Good 1.0×, Easy 1.5×.
-- Enemy damage is `round(enemy basePower × 0.75)`, minimum 1 unless the battle is already over.
+- Enemy damage is `round(enemy basePower × 0.75 × gradeDefense)`, minimum 1 unless the battle is already over or the player chose Easy. Grade defense is 1.0× for Again/Hard, 0.7× for Good, and 0 for Easy.
 
 ### Encounter level scaling
 

@@ -11,3 +11,9 @@
 - **Decision:** The Pack reports new cards first answered in the current Anki study day against the effective daily new-card allowance.
 - **Rationale:** It directly explains the blue remaining-new counter; review and learning repeats must not consume this allowance.
 - **Trade-off:** It is not a count of every card answered today; a separate review-activity statistic would be needed for that.
+
+## 2026-07-19 — Grade defense applies to the immediate enemy response
+
+- **Decision:** Easy negates, and Good reduces to 0.7×, the automatic enemy attack following that review grade.
+- **Rationale:** The battle loop resolves the player's grade-based attack before the enemy's response, so this makes the requested “next turn” effect observable without persisting a separate status across cards or battles.
+- **Trade-off:** The protection does not carry to a later turn when the enemy is defeated or a catch succeeds, because no enemy attack occurs in those outcomes.
