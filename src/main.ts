@@ -1,7 +1,7 @@
 import './style.css';
 import './storage.css';
 import { createGame } from './game/createGame';
-import { basePower, catchChance, characterLevel, damageForGrade, encounterLevel, initialMonster, maxHp, nextCard, placeCaught, resolveEnemyDamage, scheduleCard, species, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
+import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, encounterLevel, initialMonster, maxHp, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, scheduleCard, species, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
 import { db, exportBackup, getSave, restoreBackup, saveGame, type SaveState } from './storage/db';
 
 const status = document.querySelector<HTMLSpanElement>('#deck-status')!;
@@ -28,7 +28,11 @@ async function boot() {
 }
 const today = () => new Date().toISOString().slice(0, 10);
 const active = () => save.party[save.activeIndex];
-function refreshStatus() { status.textContent = importStatus ?? `${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}`; }
+function refreshStatus() {
+  if (importStatus) { status.textContent = importStatus; return; }
+  const counts = cardCounts(cards, new Date(), save.dailyNewLimit);
+  status.innerHTML = `<span class="deck-summary">${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}</span><span class="card-count new" aria-label="${counts.new} new cards available today">${counts.new}</span><span class="card-count learning" aria-label="${counts.learning} learning cards due">${counts.learning}</span><span class="card-count due" aria-label="${counts.review} review cards due">${counts.review}</span>`;
+}
 function updateImportStatus(progress: { stage: 'reading' } | { stage: 'cards' | 'media'; completed: number; total: number }) {
   importStatus = progress.stage === 'reading' ? 'Reading deck…' : `Importing ${progress.stage} ${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}…`;
   refreshStatus();
@@ -64,7 +68,11 @@ async function resolveTurn(grade: Grade) {
     if (battle.remainingEnemies > 0) { battle.remainingEnemies--; const roster: Array<'uzu' | 'mosslug' | 'sparkite'> = ['mosslug', 'uzu', 'sparkite']; battle.enemy = initialMonster(roster[battle.remainingEnemies], battle.kind === 'gym' ? Math.min(100, player.level + 5) : encounterLevel(save.party)); battle.message = `${battle.enemy.name} enters immediately! Choose your next review.`; battle.answer = false; await persist(); renderBattle(); return; }
     battle.message = `${battle.enemy.name} was calmed. ${player.name} gained ${xp} XP!`; await persist(); setTimeout(endBattle, 1000); return;
   }
-  player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy))); battle.answer = false; if (!player.currentHp) { battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; } await persist(); renderBattle();
+  player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy))); battle.answer = false; if (!player.currentHp) { battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; }
+  const next = nextBattleCard(cards, scheduled.id, now, save.dailyNewLimit);
+  if (!next) { battle.message = 'No more cards are available for this battle.'; await persist(); renderBattle(); setTimeout(endBattle, 1000); return; }
+  battle.card = next;
+  await persist(); renderBattle();
 }
 async function persist() { await saveGame(save); refreshStatus(); }
 function endBattle() { battle = undefined; battleEl.hidden = true; refreshStatus(); }

@@ -87,6 +87,22 @@ export function nextCard(cards: StudyCard[], now: Date, dailyNewLimit: number): 
   return introducedToday < dailyNewLimit ? cards.find((card) => card.state === 'new') : undefined;
 }
 
+export function nextBattleCard(cards: StudyCard[], reviewedCardId: string, now: Date, dailyNewLimit: number): StudyCard | undefined {
+  return nextCard(cards.filter((card) => card.id !== reviewedCardId), now, dailyNewLimit);
+}
+
+export function cardCounts(cards: StudyCard[], now: Date, dailyNewLimit: number) {
+  const today = now.toISOString().slice(0, 10);
+  const endOfToday = new Date(`${today}T23:59:59.999Z`).getTime();
+  const isDueToday = (card: StudyCard) => card.dueAt !== null && new Date(card.dueAt).getTime() <= endOfToday;
+  const introducedToday = cards.filter((card) => card.introducedOn === today).length;
+  return {
+    new: Math.min(cards.filter((card) => card.state === 'new').length, Math.max(0, dailyNewLimit - introducedToday)),
+    learning: cards.filter((card) => card.state === 'learning' && isDueToday(card)).length,
+    review: cards.filter((card) => card.state === 'review' && isDueToday(card)).length,
+  };
+}
+
 export function scheduleCard(card: StudyCard, grade: Grade, now = new Date()): StudyCard {
   const scheduler = fsrs({ enable_fuzz: false });
   const fsrsCard = {

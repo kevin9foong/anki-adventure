@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { isBlockedOverworldTile, isWallTile } from './overworldMap';
 
 export class OverworldScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
@@ -26,7 +27,7 @@ export class OverworldScene extends Phaser.Scene {
   }
   move(dx: number, dy: number) {
     const target = { x: this.position.x + dx, y: this.position.y + dy };
-    if (target.x < 1 || target.x > 13 || target.y < 2 || target.y > 12 || this.isWall(target.x, target.y)) return;
+    if (isBlockedOverworldTile(target.x, target.y)) return;
     this.position = target;
     this.tweens.add({ targets: this.player, x: target.x * this.tile + 16, y: target.y * this.tile + 16, duration: 100 });
     const hat = this.children.getByName('hat') as Phaser.GameObjects.Arc; this.tweens.add({ targets: hat, x: target.x * this.tile + 16, y: target.y * this.tile + 9, duration: 100 });
@@ -39,11 +40,10 @@ export class OverworldScene extends Phaser.Scene {
     else if (this.position.x >= 1 && this.position.x <= 5 && this.position.y >= 7 && this.position.y <= 11) this.heal();
     else this.encounter();
   }
-  private isWall(x: number, y: number) { return (x === 8 && y > 7) || (x > 10 && y === 5); }
   private drawMap() {
     const g = this.add.graphics();
     for (let y = 1; y < 14; y++) for (let x = 0; x < 15; x++) { const water = y < 4 && x > 10; const grass = y < 7 && x < 10; g.fillStyle(water ? 0x4c9dc4 : grass ? 0x76ad59 : 0xd9bd7e); g.fillRect(x * 32, y * 32, 31, 31); if (grass && (x + y) % 3 === 0) { g.fillStyle(0x407e48); g.fillRect(x * 32 + 8, y * 32 + 19, 3, 7); g.fillRect(x * 32 + 18, y * 32 + 16, 3, 8); } }
-    g.fillStyle(0x7b5445); g.fillRect(8 * 32, 8 * 32, 32, 6); g.fillRect(11 * 32, 5 * 32, 32, 6);
+    for (let y = 1; y < 14; y++) for (let x = 0; x < 15; x++) if (isWallTile(x, y)) this.drawWallTile(g, x, y);
     g.fillStyle(0xe7dfcb); g.fillRect(2 * 32, 8 * 32, 96, 68); g.fillStyle(0xc55650); g.fillTriangle(58, 256, 106, 230, 154, 256); g.fillStyle(0x51435b); g.fillRect(86, 275, 18, 49);
     this.add.text(61, 296, 'HEALTH HOUSE', { fontFamily: 'monospace', fontSize: '8px', color: '#503a38' });
     g.fillStyle(0x597057); g.fillTriangle(342, 154, 374, 90, 406, 154); g.fillTriangle(374, 154, 406, 86, 438, 154);
@@ -52,5 +52,15 @@ export class OverworldScene extends Phaser.Scene {
     this.add.rectangle(208, 144, 16, 22, 0x75525c).setStrokeStyle(2, 0x2b314a); this.add.text(183, 159, 'RIN', { fontFamily: 'monospace', fontSize: '8px', color: '#fff3cc', stroke: '#182237', strokeThickness: 2 });
     this.add.rectangle(112, 112, 16, 22, 0x4b6a97).setStrokeStyle(2, 0x2b314a); this.add.text(86, 127, 'KAI', { fontFamily: 'monospace', fontSize: '8px', color: '#fff3cc', stroke: '#182237', strokeThickness: 2 });
     this.add.rectangle(400, 304, 45, 42, 0x74508e).setStrokeStyle(3, 0xf0d293); this.add.text(375, 351, 'BIZAN GYM', { fontFamily: 'monospace', fontSize: '8px', color: '#fff3cc', stroke: '#182237', strokeThickness: 2 });
+  }
+  private drawWallTile(g: Phaser.GameObjects.Graphics, x: number, y: number) {
+    const left = x * this.tile;
+    const top = y * this.tile;
+    g.fillStyle(0x30384b); g.fillRect(left, top, 31, 31);
+    g.fillStyle(0x65718a); g.fillRect(left + 2, top + 3, 27, 26);
+    g.fillStyle(0x9da9b7); g.fillRect(left + 3, top + 4, 25, 4);
+    g.fillStyle(0x424d63); g.fillRect(left + 2, top + 14, 27, 2); g.fillRect(left + 2, top + 25, 27, 2);
+    g.fillStyle(0x4d5870); g.fillRect(left + 9, top + 8, 2, 6); g.fillRect(left + 20, top + 16, 2, 9);
+    g.fillStyle(0xc2cad1); g.fillRect(left + 4, top + 9, 5, 2); g.fillRect(left + 12, top + 17, 7, 2);
   }
 }
