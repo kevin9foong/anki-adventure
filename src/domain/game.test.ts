@@ -91,6 +91,20 @@ describe('card queue', () => {
     expect(cardCounts(cards, now, 5)).toEqual({ new: 0, learning: 1, review: 2 });
   });
 
+  it('counts only learning and relearning cards due within the inclusive 20-minute learn-ahead window, and studies them before green or blue cards', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cards = [
+      { id: 'learning-now', front: '犬', back: 'dog', state: 'learning' as const, dueAt: now.toISOString(), introducedOn: '2026-07-19', intervalDays: 0 },
+      { id: 'relearning-at-boundary', front: '鳥', back: 'bird', state: 'relearning' as const, dueAt: new Date(now.getTime() + 20 * 60_000).toISOString(), introducedOn: '2026-07-18', intervalDays: 4 },
+      { id: 'learning-outside-window', front: '魚', back: 'fish', state: 'learning' as const, dueAt: new Date(now.getTime() + 20 * 60_000 + 1).toISOString(), introducedOn: '2026-07-19', intervalDays: 0 },
+      { id: 'review-due', front: '空', back: 'sky', state: 'review' as const, dueAt: now.toISOString(), introducedOn: '2026-07-01', intervalDays: 4 },
+      { id: 'new', front: '本', back: 'book', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+    ];
+
+    expect(cardCounts(cards, now, 5)).toEqual({ new: 1, learning: 2, review: 1 });
+    expect(nextCard(cards, now, 5)?.id).toBe('learning-now');
+  });
+
   it('starts a battle with a learning card shown in the red learn-ahead count', () => {
     const now = new Date('2026-07-19T12:00:00Z');
     const cards = [
@@ -120,6 +134,34 @@ describe('card queue', () => {
     expect(cardCounts(cards, now, effectiveNewCardLimit(5)).new).toBe(2);
     expect(cardCounts(cards, now, effectiveNewCardLimit(10)).new).toBe(7);
     expect(cardCounts(cards, now, effectiveNewCardLimit(5, 5)).new).toBe(7);
+  });
+
+  it('uses Anki study days, rather than calendar days, when calculating the remaining blue count', () => {
+    const beforeRollover = new Date('2026-07-20T03:59:00Z');
+    const afterRollover = new Date('2026-07-20T04:00:00Z');
+    const cards = [
+      { id: 'introduced-before-midnight', front: '猫', back: 'cat', state: 'learning' as const, dueAt: '2026-07-20T04:10:00Z', introducedOn: '2026-07-19', intervalDays: 0 },
+      { id: 'introduced-after-midnight', front: '犬', back: 'dog', state: 'review' as const, dueAt: '2026-07-20T04:20:00Z', introducedOn: '2026-07-19', intervalDays: 1 },
+      { id: 'unseen-1', front: '鳥', back: 'bird', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+      { id: 'unseen-2', front: '魚', back: 'fish', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+      { id: 'unseen-3', front: '空', back: 'sky', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+    ];
+
+    expect(cardCounts(cards, beforeRollover, 3).new).toBe(1);
+    expect(cardCounts(cards, afterRollover, 3).new).toBe(3);
+  });
+
+  it('counts and selects green reviews through the next 04:00 study-day cutoff, but excludes later reviews', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cutoff = new Date('2026-07-20T04:00:00Z');
+    const cards = [
+      { id: 'review-at-cutoff', front: '猫', back: 'cat', state: 'review' as const, dueAt: cutoff.toISOString(), introducedOn: '2026-07-01', intervalDays: 7 },
+      { id: 'review-next-study-day', front: '犬', back: 'dog', state: 'review' as const, dueAt: new Date(cutoff.getTime() + 1).toISOString(), introducedOn: '2026-07-01', intervalDays: 7 },
+      { id: 'new', front: '鳥', back: 'bird', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+    ];
+
+    expect(cardCounts(cards, now, 5)).toEqual({ new: 1, learning: 0, review: 1 });
+    expect(nextCard(cards, now, 5)?.id).toBe('review-at-cutoff');
   });
 
   it('tracks new cards solved in the current Anki study day against today’s allowance', () => {
