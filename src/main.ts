@@ -14,7 +14,7 @@ let save: SaveState;
 let cards: StudyCard[] = [];
 let importStatus: string | undefined;
 let bridge: ReturnType<typeof createGame>;
-let battle: { enemy: Monster; card: StudyCard; answer: boolean; mode: 'fight' | 'catch'; kind: 'wild' | 'trainer' | 'gym'; remainingEnemies: number; message: string } | undefined;
+let battle: { enemy: Monster; card: StudyCard; answer: boolean; mode: 'fight' | 'catch'; kind: 'wild' | 'trainer' | 'gym'; remainingEnemies: number; message: string; animating: boolean } | undefined;
 
 const demoDeck: StudyCard[] = [
   { id: 'demo-1', front: '海', back: 'sea', reading: 'うみ', state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
@@ -58,7 +58,10 @@ function startBattle(kind: 'wild' | 'trainer' | 'gym' = 'wild') {
   if (kind === 'gym' && characterLevel(cards) < 8) return notice('Mt. Bizan Gym opens at trainer level 8. Mature cards raise your trainer level.');
   const options: Array<'uzu' | 'mosslug' | 'sparkite'> = ['uzu', 'mosslug', 'sparkite']; const enemy = initialMonster(options[Math.floor(Math.random() * options.length)], encounterLevel(save.party));
   if (kind === 'gym') enemy.level = Math.min(100, Math.max(...save.party.map((member) => member.level)) + 5), enemy.currentHp = maxHp(enemy);
-  battle = { enemy, card, answer: false, mode: 'fight', kind, remainingEnemies: kind === 'gym' ? 2 : 0, message: kind === 'wild' ? `A wild ${enemy.name} emerged from the route!` : kind === 'trainer' ? `Route Trainer Rin challenges you with ${enemy.name}!` : `The Mt. Bizan leader sends out ${enemy.name}!` }; battleEl.hidden = false; renderBattle();
+  battle = { enemy, card, answer: false, mode: 'fight', kind, remainingEnemies: kind === 'gym' ? 2 : 0, message: kind === 'wild' ? `A wild ${enemy.name} emerged from the route!` : kind === 'trainer' ? `Route Trainer Rin challenges you with ${enemy.name}!` : `The Mt. Bizan leader sends out ${enemy.name}!`, animating: false }; battleEl.hidden = false; renderBattle();
+}
+function monsterSprite(monster: Monster, side: 'player' | 'enemy') {
+  return `<div class="sprite ${monster.species} ${side}" role="img" aria-label="${monster.name}"><i class="sprite-ear ear-left"></i><i class="sprite-ear ear-right"></i><i class="festival-hat"></i><i class="sprite-mark"></i><i class="sprite-eye eye-left"></i><i class="sprite-eye eye-right"></i><i class="sprite-brow brow-left"></i><i class="sprite-brow brow-right"></i><i class="sprite-mouth"></i></div>`;
 }
 function renderBattle() {
   if (!battle) return; const player = active(); if (!player) return;
@@ -66,8 +69,8 @@ function renderBattle() {
   const word = furiganaHtml(battle.answer ? battle.card.furigana ?? battle.card.front : battle.card.front);
   const sentence = battle.card.exampleSentence ? `<p class="example-sentence">${furiganaHtml(battle.answer ? battle.card.exampleSentenceFurigana ?? battle.card.exampleSentence : battle.card.exampleSentence)}${battle.answer && battle.card.exampleSentenceTranslation ? `<small>${furiganaHtml(battle.card.exampleSentenceTranslation)}</small>` : ''}</p>` : '';
   const answer = battle.answer ? `<span>${furiganaHtml(battle.card.back)}</span><small>${furiganaHtml(battle.card.reading ?? '')}</small>` : '';
-  battleEl.innerHTML = `<div class="battle-top"><div class="monster-card enemy"><b>Lv${battle.enemy.level} ${battle.enemy.name}</b><meter min="0" max="${enemyMax}" value="${battle.enemy.currentHp}"></meter><span>${battle.enemy.currentHp}/${enemyMax} HP</span></div><div class="sprite ${battle.enemy.species}"></div></div><div class="battle-bottom"><div class="sprite ${player.species}"></div><div class="monster-card"><b>Lv${player.level} ${player.name}</b><meter min="0" max="${playerMax}" value="${player.currentHp}"></meter><span>${player.currentHp}/${playerMax} HP</span></div></div><section class="review"><p class="message">${battle.message}</p><div class="prompt"><strong>${word}</strong>${answer}${sentence}</div>${battle.answer ? '<div class="grades"><button data-grade="again">Again<br/><small>0.3×</small></button><button data-grade="hard">Hard<br/><small>0.5× · 0.7× hit</small></button><button data-grade="good">Good<br/><small>1.0× · Guard</small></button><button data-grade="easy">Easy<br/><small>1.5× · Guard</small></button></div>' : '<button id="show-answer" class="show">Show answer</button>'}</section><button id="run" class="run">Leave battle</button>`;
-  battleEl.querySelector('#show-answer')?.addEventListener('click', () => { if (battle) { battle.answer = true; battle.message = battle.mode === 'catch' ? 'Choose a grade to cast your catch charm.' : 'How well did you remember it?'; renderBattle(); } });
+  battleEl.innerHTML = `<div class="battle-top"><div class="monster-card enemy"><b>Lv${battle.enemy.level} ${battle.enemy.name}</b><meter min="0" max="${enemyMax}" value="${battle.enemy.currentHp}"></meter><span>${battle.enemy.currentHp}/${enemyMax} HP</span></div>${monsterSprite(battle.enemy, 'enemy')}</div><div class="battle-bottom">${monsterSprite(player, 'player')}<div class="monster-card"><b>Lv${player.level} ${player.name}</b><meter min="0" max="${playerMax}" value="${player.currentHp}"></meter><span>${player.currentHp}/${playerMax} HP</span></div></div><section class="review"><p class="message">${battle.message}</p><div class="prompt"><strong>${word}</strong>${answer}${sentence}</div>${battle.answer ? `<div class="grades"><button data-grade="again" ${battle.animating ? 'disabled' : ''}>Again<br/><small>0.3×</small></button><button data-grade="hard" ${battle.animating ? 'disabled' : ''}>Hard<br/><small>0.5× · 0.7× hit</small></button><button data-grade="good" ${battle.animating ? 'disabled' : ''}>Good<br/><small>1.0× · Guard</small></button><button data-grade="easy" ${battle.animating ? 'disabled' : ''}>Easy<br/><small>1.5× · Guard</small></button></div>` : `<button id="show-answer" class="show" ${battle.animating ? 'disabled' : ''}>Show answer</button>`}</section><button id="run" class="run">Leave battle</button>`;
+  battleEl.querySelector('#show-answer')?.addEventListener('click', () => { if (battle && !battle.animating) { battle.answer = true; battle.message = battle.mode === 'catch' ? 'Choose a grade to cast your catch charm.' : 'How well did you remember it?'; renderBattle(); } });
   battleEl.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach((button) => button.addEventListener('click', () => resolveTurn(button.dataset.grade as Grade)));
   if (battle.answer && battle.kind === 'wild') {
     const toggle = createBattleModeToggle(document, battle.mode, (mode) => {
@@ -82,21 +85,45 @@ function renderBattle() {
   }
   battleEl.querySelector('#run')?.addEventListener('click', endBattle);
 }
+function playBattleAnimation(side: 'player' | 'enemy', speciesId: Monster['species'], power: 'again' | 'hard' | 'good' | 'easy' | 'catch') {
+  const sprite = battleEl.querySelector<HTMLElement>(`.sprite.${side}`);
+  const lane = sprite?.closest<HTMLElement>(side === 'player' ? '.battle-bottom' : '.battle-top');
+  if (!sprite || !lane) return Promise.resolve();
+  const effect = document.createElement('span');
+  effect.className = `attack-effect ${side} ${power === 'catch' ? 'catch-charm' : `effect-${speciesId}`} power-${power}`;
+  lane.append(effect);
+  sprite.classList.add('is-attacking');
+  return new Promise<void>((resolve) => window.setTimeout(() => {
+    sprite.classList.remove('is-attacking');
+    effect.remove();
+    resolve();
+  }, power === 'catch' ? 650 : 520));
+}
 async function resolveTurn(grade: Grade) {
-  if (!battle) return; const now = new Date(); const scheduled = scheduleCard(battle.card, grade, now); await db.cards.put(scheduled); cards = cards.map((card) => card.id === scheduled.id ? scheduled : card); const player = active()!;
+  if (!battle || battle.animating) return;
+  battle.animating = true;
+  const now = new Date(); const scheduled = scheduleCard(battle.card, grade, now); await db.cards.put(scheduled); cards = cards.map((card) => card.id === scheduled.id ? scheduled : card); const player = active()!;
   if (battle.mode === 'catch') {
-    if (Math.random() < catchChance(grade, battle.enemy.currentHp, maxHp(battle.enemy))) { const caught = { ...battle.enemy, id: crypto.randomUUID(), currentHp: maxHp(battle.enemy) }; const placement = placeCaught(save.party, save.storage, caught); if (placement.placed === 'full') { battle.message = 'Storage is full. The charm shattered!'; battle.answer = false; battle.mode = 'fight'; renderBattle(); return; } save.party = placement.party; save.storage = placement.storage; battle.message = `${caught.name} went to your ${placement.placed}!`; await persist(); setTimeout(endBattle, 900); return; }
+    await playBattleAnimation('player', player.species, 'catch');
+    if (!battle) return;
+    if (Math.random() < catchChance(grade, battle.enemy.currentHp, maxHp(battle.enemy))) { const caught = { ...battle.enemy, id: crypto.randomUUID(), currentHp: maxHp(battle.enemy) }; const placement = placeCaught(save.party, save.storage, caught); if (placement.placed === 'full') { battle.message = 'Storage is full. The charm shattered!'; battle.answer = false; battle.mode = 'fight'; battle.animating = false; renderBattle(); return; } save.party = placement.party; save.storage = placement.storage; battle.message = `${caught.name} went to your ${placement.placed}!`; await persist(); setTimeout(endBattle, 900); return; }
     battle.message = 'The wild monster broke free!';
-  } else { battle.enemy.currentHp = Math.max(0, battle.enemy.currentHp - damageForGrade(basePower(player), grade)); battle.message = `${grade === 'again' ? `${player.name} swung wildly and landed a light tap, let's try again!` : grade === 'hard' ? `${player.name} gritted its teeth and landed a scrappy hit!` : grade === 'easy' ? `${player.name} landed a critical hit!` : `${player.name} studied hard and struck!`}${grade === 'good' || grade === 'easy' ? ' The next enemy attack is guarded.' : grade === 'hard' ? ' The next enemy attack is weakened.' : ''}`; }
+  } else {
+    await playBattleAnimation('player', player.species, grade);
+    if (!battle) return;
+    battle.enemy.currentHp = Math.max(0, battle.enemy.currentHp - damageForGrade(basePower(player), grade)); battle.message = `${grade === 'again' ? `${player.name} swung wildly and landed a light tap, let's try again!` : grade === 'hard' ? `${player.name} gritted its teeth and landed a scrappy hit!` : grade === 'easy' ? `${player.name} landed a critical hit!` : `${player.name} studied hard and struck!`}${grade === 'good' || grade === 'easy' ? ' The next enemy attack is guarded.' : grade === 'hard' ? ' The next enemy attack is weakened.' : ''}`;
+  }
   if (battle.enemy.currentHp === 0) {
     const xp = Math.floor((species[battle.enemy.species].baseXp * battle.enemy.level * (battle.kind === 'wild' ? 1 : 1.5)) / 7); save.party[save.activeIndex] = grantXp(player, xp);
-    if (battle.remainingEnemies > 0) { battle.remainingEnemies--; const roster: Array<'uzu' | 'mosslug' | 'sparkite'> = ['mosslug', 'uzu', 'sparkite']; battle.enemy = initialMonster(roster[battle.remainingEnemies], battle.kind === 'gym' ? Math.min(100, player.level + 5) : encounterLevel(save.party)); battle.message = `${battle.enemy.name} enters immediately! Choose your next review.`; battle.answer = false; await persist(); renderBattle(); return; }
+    if (battle.remainingEnemies > 0) { battle.remainingEnemies--; const roster: Array<'uzu' | 'mosslug' | 'sparkite'> = ['mosslug', 'uzu', 'sparkite']; battle.enemy = initialMonster(roster[battle.remainingEnemies], battle.kind === 'gym' ? Math.min(100, player.level + 5) : encounterLevel(save.party)); battle.message = `${battle.enemy.name} enters immediately! Choose your next review.`; battle.answer = false; battle.animating = false; await persist(); renderBattle(); return; }
     battle.message = `${battle.enemy.name} was calmed. ${player.name} gained ${xp} XP!`; await persist(); setTimeout(endBattle, 1000); return;
   }
+  await playBattleAnimation('enemy', battle.enemy.species, grade);
+  if (!battle) return;
   player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy), grade)); battle.answer = false; if (!player.currentHp) { if (partyIsDefeated(save.party)) { await returnToHealthHouse(); return; } battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; }
   const next = nextBattleCard(cards, scheduled.id, now, todayNewLimit());
   if (!next) { battle.message = 'No more cards are available for this battle.'; await persist(); renderBattle(); setTimeout(endBattle, 1000); return; }
-  battle.card = next;
+  battle.card = next; battle.animating = false;
   await persist(); renderBattle();
 }
 async function persist() { await saveGame(save); refreshStatus(); }
