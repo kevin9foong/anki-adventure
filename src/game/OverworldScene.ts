@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { handleOverworldKey } from './overworldControls';
 import { isBlockedOverworldTile, isWallTile } from './overworldMap';
 
 export class OverworldScene extends Phaser.Scene {
@@ -22,7 +23,7 @@ export class OverworldScene extends Phaser.Scene {
     this.add.circle(this.player.x, this.player.y - 7, 7, 0x9c3d48).setDepth(5).setName('hat');
     this.add.text(12, 10, 'TOKUSHIMA  •  AWA GATE', { fontFamily: 'monospace', fontSize: '11px', color: '#fff3cc', stroke: '#182237', strokeThickness: 3 }).setScrollFactor(0).setDepth(8);
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase(); if (key === 'arrowup' || key === 'w') this.move(0, -1); if (key === 'arrowdown' || key === 's') this.move(0, 1); if (key === 'arrowleft' || key === 'a') this.move(-1, 0); if (key === 'arrowright' || key === 'd') this.move(1, 0);
+      handleOverworldKey(event, { move: this.move.bind(this), interact: this.interact.bind(this) });
     });
   }
   move(dx: number, dy: number) {
