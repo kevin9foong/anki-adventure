@@ -11,6 +11,9 @@
 .example-sentence { margin:7px 0 0; font-size:17px; line-height:1.35; }
 .example-sentence small { display:block; margin-top:3px; }
 
+/* Keep the enemy's status card immediately beside its sprite. */
+.battle-top { justify-content:flex-end; gap:20px; }
+
 /* Keep controls beneath the canvas so they cannot cover the game on short Safari viewports. */
 #controls { --control-size:clamp(44px,14vw,52px); width:100%; padding:clamp(14px,3vh,24px) clamp(4px,2vw,14px) 0; }
 .dpad { width:auto; grid-template:repeat(3,var(--control-size))/repeat(3,var(--control-size)); }
