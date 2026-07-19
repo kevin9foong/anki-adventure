@@ -68,6 +68,10 @@ export function placeCaught(party: Monster[], storage: Monster[], caught: Monste
   return { party, storage, placed: 'full' as const };
 }
 
+export const partyIsDefeated = (party: Array<Pick<Monster, 'currentHp'>>) => party.every((monster) => monster.currentHp <= 0);
+
+export const restoreParty = (party: Monster[]) => party.map((monster) => ({ ...monster, currentHp: maxHp(monster) }));
+
 export function grantXp(monster: Monster, amount: number): Monster {
   const before = maxHp(monster);
   const xp = monster.xp + amount;
@@ -147,6 +151,11 @@ export function cardCounts(cards: StudyCard[], now: Date, dailyNewLimit: number)
     learning: cards.filter((card) => (card.state === 'learning' || card.state === 'relearning') && dueAtOrInfinity(card) <= learnAhead).length,
     review: cards.filter((card) => card.state === 'review' && dueAtOrInfinity(card) <= endOfStudyDay).length,
   };
+}
+
+/** New cards first answered during the current Anki study day. */
+export function newCardProgress(cards: StudyCard[], now: Date, allowance: number) {
+  return { solved: cards.filter((card) => card.introducedOn === studyDayKey(now)).length, allowance };
 }
 
 export function scheduleCard(card: StudyCard, grade: Grade, now = new Date()): StudyCard {

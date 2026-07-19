@@ -6,6 +6,8 @@
 .card-count.new { color:#6fb6ff; }
 .card-count.learning { color:#ef7777; }
 .card-count.due { color:#7edc8d; }
+.new-card-stats { display:grid; gap:2px; }
+.new-card-stats p { margin:0; }
 
 /* Keep controls beneath the canvas so they cannot cover the game on short Safari viewports. */
 #controls { --control-size:clamp(44px,14vw,52px); width:100%; padding:clamp(14px,3vh,24px) clamp(4px,2vw,14px) 0; }

@@ -35,6 +35,12 @@ export class OverworldScene extends Phaser.Scene {
     this.steps++;
     if (this.steps >= 5 && target.y < 7 && Math.random() < .42) { this.steps = 0; this.encounter(); }
   }
+  returnToHealthHouse() {
+    this.position = { x: 3, y: 9 };
+    this.player.setPosition(this.position.x * this.tile + 16, this.position.y * this.tile + 16);
+    const hat = this.children.getByName('hat') as Phaser.GameObjects.Arc;
+    hat.setPosition(this.position.x * this.tile + 16, this.position.y * this.tile + 9);
+  }
   interact() {
     if (Math.abs(this.position.x - 6) + Math.abs(this.position.y - 4) <= 1 || Math.abs(this.position.x - 3) + Math.abs(this.position.y - 3) <= 1) this.trainer();
     else if (Math.abs(this.position.x - 12) + Math.abs(this.position.y - 9) <= 1) this.gym();

@@ -1,7 +1,8 @@
 import './style.css';
 import './storage.css';
 import { createGame } from './game/createGame';
-import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
+import { insertStoragePanel } from './ui/menu';
+import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, newCardProgress, nextBattleCard, nextCard, partyIsDefeated, placeCaught, resolveEnemyDamage, restoreParty, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
 import { db, exportBackup, getSave, restoreBackup, saveGame, type SaveState } from './storage/db';
 
 const status = document.querySelector<HTMLSpanElement>('#deck-status')!;
@@ -32,6 +33,8 @@ const active = () => save.party[save.activeIndex];
 const todayNewLimit = () => effectiveNewCardLimit(save.dailyNewLimit, save.extraNewCardsToday);
 function renderTodayNewLimit(saved = false) {
   document.querySelector('#today-new-limit')!.textContent = `${saved ? 'Saved. ' : ''}Today’s allowance: ${todayNewLimit()} (${save.dailyNewLimit} daily${save.extraNewCardsToday ? ` + ${save.extraNewCardsToday} Custom Study` : ''}).`;
+  const progress = newCardProgress(cards, new Date(), todayNewLimit());
+  document.querySelector('#new-card-progress')!.textContent = `New solved today: ${progress.solved} / ${progress.allowance}.`;
 }
 function refreshStatus() {
   if (importStatus) { status.textContent = importStatus; return; }
@@ -75,7 +78,7 @@ async function resolveTurn(grade: Grade) {
     if (battle.remainingEnemies > 0) { battle.remainingEnemies--; const roster: Array<'uzu' | 'mosslug' | 'sparkite'> = ['mosslug', 'uzu', 'sparkite']; battle.enemy = initialMonster(roster[battle.remainingEnemies], battle.kind === 'gym' ? Math.min(100, player.level + 5) : encounterLevel(save.party)); battle.message = `${battle.enemy.name} enters immediately! Choose your next review.`; battle.answer = false; await persist(); renderBattle(); return; }
     battle.message = `${battle.enemy.name} was calmed. ${player.name} gained ${xp} XP!`; await persist(); setTimeout(endBattle, 1000); return;
   }
-  player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy))); battle.answer = false; if (!player.currentHp) { battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; }
+  player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy))); battle.answer = false; if (!player.currentHp) { if (partyIsDefeated(save.party)) { await returnToHealthHouse(); return; } battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; }
   const next = nextBattleCard(cards, scheduled.id, now, todayNewLimit());
   if (!next) { battle.message = 'No more cards are available for this battle.'; await persist(); renderBattle(); setTimeout(endBattle, 1000); return; }
   battle.card = next;
@@ -84,12 +87,13 @@ async function resolveTurn(grade: Grade) {
 async function persist() { await saveGame(save); refreshStatus(); }
 function endBattle() { battle = undefined; battleEl.hidden = true; refreshStatus(); }
 function notice(message: string) { window.alert(message); }
-async function healParty() { save.party = save.party.map((monster) => ({ ...monster, currentHp: maxHp(monster) })); await persist(); notice('The Health House restored your party.'); }
+async function returnToHealthHouse() { save.party = restoreParty(save.party); await persist(); bridge.returnToHealthHouse(); endBattle(); notice('Your party fainted and returned to the Health House.'); }
+async function healParty() { save.party = restoreParty(save.party); await persist(); notice('The Health House restored your party.'); }
 function renderStoragePanel() {
   document.querySelector('.storage-panel')?.remove();
   const panel = document.createElement('section'); panel.className = 'storage-panel';
   panel.innerHTML = `<h3>Monster Storage</h3><p>Party ${save.party.length}/6 · Box ${save.storage.length}/100</p><div class="monster-list"><b>Party</b>${save.party.map((monster, index) => `<button data-deposit="${index}" ${save.party.length === 1 ? 'disabled' : ''}>Deposit ${monster.name} Lv${monster.level}</button>`).join('')}</div><div class="monster-list"><b>Box</b>${save.storage.length ? save.storage.map((monster, index) => `<button data-withdraw="${index}" ${save.party.length >= 6 ? 'disabled' : ''}>Withdraw ${monster.name} Lv${monster.level}</button>`).join('') : '<small>Empty</small>'}</div>`;
-  menu.querySelector('form')!.insertBefore(panel, menu.querySelector('.hint')!);
+  insertStoragePanel(menu.querySelector('form')!, panel);
   panel.querySelectorAll<HTMLButtonElement>('[data-deposit]').forEach((button) => button.addEventListener('click', async (event) => { event.preventDefault(); const [monster] = save.party.splice(Number(button.dataset.deposit), 1); save.storage.push(monster); save.activeIndex = 0; await persist(); renderStoragePanel(); }));
   panel.querySelectorAll<HTMLButtonElement>('[data-withdraw]').forEach((button) => button.addEventListener('click', async (event) => { event.preventDefault(); if (save.party.length >= 6) return; const [monster] = save.storage.splice(Number(button.dataset.withdraw), 1); save.party.push(monster); await persist(); renderStoragePanel(); }));
 }

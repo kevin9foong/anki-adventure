@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyGrade, cardCounts, catchChance, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, rollDailyNewLimit, scheduleCard, studyDayKey, totalXpForLevel } from './game';
+import { applyGrade, cardCounts, catchChance, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, newCardProgress, nextBattleCard, nextCard, partyIsDefeated, placeCaught, resolveEnemyDamage, restoreParty, rollDailyNewLimit, scheduleCard, studyDayKey, totalXpForLevel } from './game';
 
 describe('battle rules', () => {
   it('turns self-grades into the locked damage multipliers', () => {
@@ -28,6 +28,23 @@ describe('battle rules', () => {
 });
 
 describe('party storage', () => {
+  it('is defeated only when no party monster has HP remaining', () => {
+    const fainted = initialMonster('tanuki');
+    fainted.currentHp = 0;
+    expect(partyIsDefeated([fainted])).toBe(true);
+    expect(partyIsDefeated([fainted, initialMonster('uzu')])).toBe(false);
+  });
+
+  it('restores every monster in a defeated party at the Health House', () => {
+    const party = [initialMonster('tanuki'), initialMonster('uzu', 3)];
+    party.forEach((monster) => { monster.currentHp = 0; });
+
+    expect(restoreParty(party)).toMatchObject([
+      { currentHp: 39 },
+      { currentHp: 54 },
+    ]);
+  });
+
   it('places a catch in the party and then storage without losing the monster', () => {
     const caught = initialMonster('uzu');
     expect(placeCaught([initialMonster('tanuki')], [], caught).party).toHaveLength(2);
@@ -95,6 +112,17 @@ describe('card queue', () => {
     expect(cardCounts(cards, now, effectiveNewCardLimit(5)).new).toBe(2);
     expect(cardCounts(cards, now, effectiveNewCardLimit(10)).new).toBe(7);
     expect(cardCounts(cards, now, effectiveNewCardLimit(5, 5)).new).toBe(7);
+  });
+
+  it('tracks new cards solved in the current Anki study day against today’s allowance', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cards = [
+      { id: 'solved-today', front: '猫', back: 'cat', state: 'learning' as const, dueAt: '2026-07-19T12:10:00Z', introducedOn: '2026-07-19', intervalDays: 0 },
+      { id: 'solved-yesterday', front: '犬', back: 'dog', state: 'review' as const, dueAt: '2026-07-20T12:00:00Z', introducedOn: '2026-07-18', intervalDays: 2 },
+      { id: 'new', front: '鳥', back: 'bird', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+    ];
+
+    expect(newCardProgress(cards, now, 15)).toEqual({ solved: 1, allowance: 15 });
   });
 
   it('prefers overdue cards and only offers allowed new cards once due work is empty', () => {
