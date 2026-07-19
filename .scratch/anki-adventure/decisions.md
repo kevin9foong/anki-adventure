@@ -23,3 +23,10 @@
 - **Decision:** Resolve common word, meaning, reading, furigana, and example-sentence fields from the note model's field names; fall back to the original first-three-field convention when model metadata is unavailable.
 - **Rationale:** Kaishi places its translation and examples after reading, while other decks commonly use Front/Back fields. Named resolution preserves both formats and makes sentence support reusable.
 - **Trade-off:** Decks with unconventional field names still need aliases added to the importer or will use the positional fallback.
+
+## 2026-07-19 — Catch and fight can be changed before a grade
+
+- **Decision:** In a wild battle, the revealed card stays visible while the player switches between Catch and Fight; the selected grade only resolves the currently selected mode.
+- **Rationale:** Changing intent before grading should not hide, consume, or reschedule the review card, and it lets a failed capture plan be reconsidered without restarting the turn.
+- **Trade-off:** The mode button is deliberately unavailable before the answer is revealed, when there is no gradeable review to redirect.
+- **Verification gap:** This repository has neither a design source/Storybook nor `agent-browser`, so visual verification was limited to the interaction test and production build.

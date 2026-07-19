@@ -2,6 +2,7 @@ import './style.css';
 import './storage.css';
 import { createGame } from './game/createGame';
 import { furiganaHtml } from './ui/furigana';
+import { createBattleModeToggle } from './ui/battleMode';
 import { insertStoragePanel } from './ui/menu';
 import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, newCardProgress, nextBattleCard, nextCard, partyIsDefeated, placeCaught, resolveEnemyDamage, restoreParty, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
 import { db, exportBackup, getSave, restoreBackup, saveGame, type SaveState } from './storage/db';
@@ -65,10 +66,20 @@ function renderBattle() {
   const word = furiganaHtml(battle.answer ? battle.card.furigana ?? battle.card.front : battle.card.front);
   const sentence = battle.card.exampleSentence ? `<p class="example-sentence">${furiganaHtml(battle.answer ? battle.card.exampleSentenceFurigana ?? battle.card.exampleSentence : battle.card.exampleSentence)}${battle.answer && battle.card.exampleSentenceTranslation ? `<small>${furiganaHtml(battle.card.exampleSentenceTranslation)}</small>` : ''}</p>` : '';
   const answer = battle.answer ? `<span>${furiganaHtml(battle.card.back)}</span><small>${furiganaHtml(battle.card.reading ?? '')}</small>` : '';
-  battleEl.innerHTML = `<div class="battle-top"><div class="monster-card enemy"><b>Lv${battle.enemy.level} ${battle.enemy.name}</b><meter min="0" max="${enemyMax}" value="${battle.enemy.currentHp}"></meter><span>${battle.enemy.currentHp}/${enemyMax} HP</span></div><div class="sprite ${battle.enemy.species}"></div></div><div class="battle-bottom"><div class="sprite ${player.species}"></div><div class="monster-card"><b>Lv${player.level} ${player.name}</b><meter min="0" max="${playerMax}" value="${player.currentHp}"></meter><span>${player.currentHp}/${playerMax} HP</span></div></div><section class="review"><p class="message">${battle.message}</p><div class="prompt"><strong>${word}</strong>${answer}${sentence}</div>${battle.answer ? `<div class="grades"><button data-grade="again">Again<br/><small>0.3×</small></button><button data-grade="hard">Hard<br/><small>0.5× · 0.7× hit</small></button><button data-grade="good">Good<br/><small>1.0× · Guard</small></button><button data-grade="easy">Easy<br/><small>1.5× · Guard</small></button></div>${battle.kind === 'wild' ? `<button id="catch" class="catch">${battle.mode === 'catch' ? 'Catching… choose a grade' : 'Catch instead'}</button>` : ''}` : '<button id="show-answer" class="show">Show answer</button>'}</section><button id="run" class="run">Leave battle</button>`;
+  battleEl.innerHTML = `<div class="battle-top"><div class="monster-card enemy"><b>Lv${battle.enemy.level} ${battle.enemy.name}</b><meter min="0" max="${enemyMax}" value="${battle.enemy.currentHp}"></meter><span>${battle.enemy.currentHp}/${enemyMax} HP</span></div><div class="sprite ${battle.enemy.species}"></div></div><div class="battle-bottom"><div class="sprite ${player.species}"></div><div class="monster-card"><b>Lv${player.level} ${player.name}</b><meter min="0" max="${playerMax}" value="${player.currentHp}"></meter><span>${player.currentHp}/${playerMax} HP</span></div></div><section class="review"><p class="message">${battle.message}</p><div class="prompt"><strong>${word}</strong>${answer}${sentence}</div>${battle.answer ? '<div class="grades"><button data-grade="again">Again<br/><small>0.3×</small></button><button data-grade="hard">Hard<br/><small>0.5× · 0.7× hit</small></button><button data-grade="good">Good<br/><small>1.0× · Guard</small></button><button data-grade="easy">Easy<br/><small>1.5× · Guard</small></button></div>' : '<button id="show-answer" class="show">Show answer</button>'}</section><button id="run" class="run">Leave battle</button>`;
   battleEl.querySelector('#show-answer')?.addEventListener('click', () => { if (battle) { battle.answer = true; battle.message = battle.mode === 'catch' ? 'Choose a grade to cast your catch charm.' : 'How well did you remember it?'; renderBattle(); } });
   battleEl.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach((button) => button.addEventListener('click', () => resolveTurn(button.dataset.grade as Grade)));
-  battleEl.querySelector('#catch')?.addEventListener('click', () => { if (battle) { battle.mode = 'catch'; battle.answer = false; battle.message = 'A catch charm replaces this attack review.'; renderBattle(); } });
+  if (battle.answer && battle.kind === 'wild') {
+    const toggle = createBattleModeToggle(document, battle.mode, (mode) => {
+      if (!battle) return;
+      battle.mode = mode;
+      battle.message = mode === 'catch' ? 'A catch charm replaces this attack review.' : 'This review will power your attack.';
+      renderBattle();
+    });
+    toggle.id = 'battle-mode';
+    toggle.className = 'catch';
+    battleEl.querySelector('.grades')!.after(toggle);
+  }
   battleEl.querySelector('#run')?.addEventListener('click', endBattle);
 }
 async function resolveTurn(grade: Grade) {
