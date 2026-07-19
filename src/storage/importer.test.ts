@@ -39,11 +39,11 @@ describe('deck import', () => {
 
   it('keeps existing review progress and adds cards when an updated package is re-imported', async () => {
     await importDeck(await anki21File([[1, '猫', 'cat', 'ねこ']]));
-    await db.cards.update('anki-1', { state: 'review', dueAt: '2026-08-01T12:00:00.000Z', introducedOn: '2026-07-01', intervalDays: 14, reps: 6, stability: 12, difficulty: 4 });
+    await db.cards.update('anki-1', { state: 'review', dueAt: '2026-08-01T12:00:00.000Z', introducedOn: '2026-07-01', intervalDays: 14, reps: 6, lapses: 2, learningSteps: 1, lastReviewedAt: '2026-07-18T12:00:00.000Z', stability: 12, difficulty: 4 });
 
     await expect(importDeck(await anki21File([[1, '猫', 'kitty', 'ねこ'], [2, '犬', 'dog', 'いぬ']]))).resolves.toBe(2);
 
-    await expect(db.cards.get('anki-1')).resolves.toMatchObject({ back: 'kitty', state: 'review', dueAt: '2026-08-01T12:00:00.000Z', intervalDays: 14, reps: 6, stability: 12, difficulty: 4 });
+    await expect(db.cards.get('anki-1')).resolves.toMatchObject({ back: 'kitty', state: 'review', dueAt: '2026-08-01T12:00:00.000Z', intervalDays: 14, reps: 6, lapses: 2, learningSteps: 1, lastReviewedAt: '2026-07-18T12:00:00.000Z', stability: 12, difficulty: 4 });
     await expect(db.cards.get('anki-2')).resolves.toMatchObject({ front: '犬', state: 'new' });
   });
 });

@@ -1,7 +1,13 @@
-import { fsrs, Rating, State } from 'ts-fsrs';
+import { fsrs, GenSeedStrategyWithCardId, Rating, State, StrategyMode } from 'ts-fsrs';
 
 export type Grade = 'again' | 'hard' | 'good' | 'easy';
-export type CardState = 'new' | 'learning' | 'review';
+/** The four states used by Anki's v3 scheduler. */
+export type CardState = 'new' | 'learning' | 'review' | 'relearning';
+
+// Anki's default learn-ahead window. The red counter includes cards that will
+// become available in this window, even if they are not answerable quite yet.
+export const ANKI_LEARN_AHEAD_MINUTES = 20;
+export const ANKI_DAY_CUTOFF_HOUR = 4;
 
 export interface StudyCard {
   id: string;
@@ -16,6 +22,9 @@ export interface StudyCard {
   stability?: number;
   difficulty?: number;
   reps?: number;
+  lapses?: number;
+  learningSteps?: number;
+  lastReviewedAt?: string | null;
 }
 
 export type SpeciesId = 'tanuki' | 'uzu' | 'mosslug' | 'sparkite';
@@ -79,12 +88,47 @@ export function encounterLevel(party: Array<Pick<Monster, 'level' | 'currentHp'>
   return low + Math.floor(random() * (high - low + 1));
 }
 
+/**
+ * Anki's study day rolls over at 04:00 local time by default, not at UTC
+ * midnight. Keeping this key with the save makes a daily cap survive reloads.
+ */
+export function studyDayKey(now: Date, cutoffHour = ANKI_DAY_CUTOFF_HOUR) {
+  const day = new Date(now);
+  if (day.getHours() < cutoffHour) day.setDate(day.getDate() - 1);
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+export function nextStudyDayAt(now: Date, cutoffHour = ANKI_DAY_CUTOFF_HOUR) {
+  const cutoff = new Date(now);
+  cutoff.setHours(cutoffHour, 0, 0, 0);
+  if (now.getTime() >= cutoff.getTime()) cutoff.setDate(cutoff.getDate() + 1);
+  return cutoff;
+}
+
+/** The permanent deck option plus Anki Custom Study's temporary increase. */
+export const effectiveNewCardLimit = (dailyNewLimit: number, extraNewCardsToday = 0) => Math.max(0, dailyNewLimit) + Math.max(0, extraNewCardsToday);
+
+/** Custom Study increases expire on the next Anki study day; the deck option does not. */
+export function rollDailyNewLimit(limitDate: string, extraNewCardsToday: number | undefined, now: Date) {
+  const currentDate = studyDayKey(now);
+  return limitDate === currentDate
+    ? { limitDate, extraNewCardsToday: extraNewCardsToday ?? 0 }
+    : { limitDate: currentDate, extraNewCardsToday: 0 };
+}
+
+const dueAtOrInfinity = (card: StudyCard) => card.dueAt ? new Date(card.dueAt).getTime() : Number.POSITIVE_INFINITY;
+const byDueThenId = (a: StudyCard, b: StudyCard) => dueAtOrInfinity(a) - dueAtOrInfinity(b) || a.id.localeCompare(b.id);
+
+/**
+ * The order used by Anki's default scheduler: currently-due intraday
+ * learning/relearning, then today's reviews, then the remaining new allowance.
+ */
 export function nextCard(cards: StudyCard[], now: Date, dailyNewLimit: number): StudyCard | undefined {
-  const due = cards.filter((card) => card.state !== 'new' && card.dueAt && new Date(card.dueAt).getTime() <= now.getTime());
-  if (due.length) return due.sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime())[0];
-  const today = now.toISOString().slice(0, 10);
-  const introducedToday = cards.filter((card) => card.introducedOn === today).length;
-  return introducedToday < dailyNewLimit ? cards.find((card) => card.state === 'new') : undefined;
+  const intraday = cards.filter((card) => (card.state === 'learning' || card.state === 'relearning') && dueAtOrInfinity(card) <= now.getTime()).sort(byDueThenId);
+  if (intraday.length) return intraday[0];
+  const reviews = cards.filter((card) => card.state === 'review' && dueAtOrInfinity(card) <= nextStudyDayAt(now).getTime()).sort(byDueThenId);
+  if (reviews.length) return reviews[0];
+  return cardCounts(cards, now, dailyNewLimit).new > 0 ? cards.filter((card) => card.state === 'new').sort((a, b) => a.id.localeCompare(b.id))[0] : undefined;
 }
 
 export function nextBattleCard(cards: StudyCard[], reviewedCardId: string, now: Date, dailyNewLimit: number): StudyCard | undefined {
@@ -92,35 +136,44 @@ export function nextBattleCard(cards: StudyCard[], reviewedCardId: string, now: 
 }
 
 export function cardCounts(cards: StudyCard[], now: Date, dailyNewLimit: number) {
-  const today = now.toISOString().slice(0, 10);
-  const endOfToday = new Date(`${today}T23:59:59.999Z`).getTime();
-  const isDueToday = (card: StudyCard) => card.dueAt !== null && new Date(card.dueAt).getTime() <= endOfToday;
+  const today = studyDayKey(now);
+  const learnAhead = now.getTime() + ANKI_LEARN_AHEAD_MINUTES * 60_000;
+  const endOfStudyDay = nextStudyDayAt(now).getTime();
   const introducedToday = cards.filter((card) => card.introducedOn === today).length;
   return {
+    // These are queue counts, not a count of every card in each state. This is
+    // why a red card due in 10 minutes is shown, while one due tomorrow is not.
     new: Math.min(cards.filter((card) => card.state === 'new').length, Math.max(0, dailyNewLimit - introducedToday)),
-    learning: cards.filter((card) => card.state === 'learning' && isDueToday(card)).length,
-    review: cards.filter((card) => card.state === 'review' && isDueToday(card)).length,
+    learning: cards.filter((card) => (card.state === 'learning' || card.state === 'relearning') && dueAtOrInfinity(card) <= learnAhead).length,
+    review: cards.filter((card) => card.state === 'review' && dueAtOrInfinity(card) <= endOfStudyDay).length,
   };
 }
 
 export function scheduleCard(card: StudyCard, grade: Grade, now = new Date()): StudyCard {
-  const scheduler = fsrs({ enable_fuzz: false });
+  // These are Anki's stock FSRS settings: 90% desired retention, 1m/10m
+  // learning, and 10m relearning. ts-fsrs implements FSRS-6 locally.
+  const scheduler = fsrs({ request_retention: 0.9, maximum_interval: 36500, enable_fuzz: true, enable_short_term: true, learning_steps: ['1m', '10m'], relearning_steps: ['10m'] });
+  // Fuzz is part of Anki scheduling. Seed it from the card and repetition so a
+  // reload cannot silently change a previously previewed interval.
+  scheduler.useStrategy(StrategyMode.SEED, GenSeedStrategyWithCardId('id'));
   const fsrsCard = {
+    id: card.id,
     due: card.dueAt ?? now,
     stability: card.stability ?? 0,
     difficulty: card.difficulty ?? 0,
     elapsed_days: 0,
     scheduled_days: card.intervalDays,
-    learning_steps: 0,
+    learning_steps: card.learningSteps ?? 0,
     reps: card.reps ?? 0,
-    lapses: 0,
-    state: card.state === 'new' ? State.New : card.state === 'learning' ? State.Learning : State.Review,
-    last_review: card.dueAt ?? undefined,
+    lapses: card.lapses ?? 0,
+    state: card.state === 'new' ? State.New : card.state === 'learning' ? State.Learning : card.state === 'relearning' ? State.Relearning : State.Review,
+    last_review: card.lastReviewedAt ?? undefined,
   };
   const rating = ({ again: Rating.Again, hard: Rating.Hard, good: Rating.Good, easy: Rating.Easy } as const)[grade];
   const result = scheduler.next(fsrsCard, now, rating).card;
   const intervalDays = Math.max(0, result.scheduled_days);
-  return { ...card, state: result.state === State.Review ? 'review' : 'learning', introducedOn: card.introducedOn ?? now.toISOString().slice(0, 10), dueAt: result.due.toISOString(), intervalDays, reps: result.reps, stability: result.stability, difficulty: result.difficulty };
+  const state: CardState = result.state === State.New ? 'new' : result.state === State.Learning ? 'learning' : result.state === State.Relearning ? 'relearning' : 'review';
+  return { ...card, state, introducedOn: card.introducedOn ?? studyDayKey(now), dueAt: result.due.toISOString(), intervalDays, reps: result.reps, lapses: result.lapses, learningSteps: result.learning_steps, lastReviewedAt: result.last_review?.toISOString() ?? now.toISOString(), stability: result.stability, difficulty: result.difficulty };
 }
 
 export const characterLevel = (cards: StudyCard[]) => Math.min(100, 1 + Math.floor(cards.filter((card) => card.state === 'review' && card.intervalDays >= 21).length / 20));

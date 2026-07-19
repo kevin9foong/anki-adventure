@@ -21,9 +21,10 @@ Wild encounters can be caught. Choosing **Catch instead** makes the next graded 
 
 ### Reviews and scheduling
 
-- The card queue always selects due cards before new cards.
-- New cards are capped by a configurable daily limit (10 by default). Set it to `0` to study reviews only.
-- Grades are written locally using `ts-fsrs`; stability, difficulty, repetitions, due date, and interval are retained with each card.
+- The queue follows Anki's default ordering: due learning/relearning first, then reviews due in the current study day, then new cards.
+- The blue/red/green counters follow Anki's queue semantics: remaining new allowance; learning/relearning due in the 20-minute learn-ahead window; and reviews due before the next 04:00 local study-day cutoff.
+- New cards use a configurable permanent daily limit (10 by default). “Increase today's limit by 5” is a separate Custom Study override and resets at the next study-day rollover. Set the permanent limit to `0` to study reviews only.
+- Grades are written locally using FSRS-6 with Anki's stock 90% retention, 1m/10m learning, and 10m relearning steps. Stability, difficulty, repetitions, lapses, learning step, review timestamp, due date, and interval are retained with each card.
 - The player’s trainer level is based on mature cards: `1 + floor(mature cards / 20)`, capped at level 100. A mature card is currently in review with an interval of at least 21 days.
 
 ### Battles

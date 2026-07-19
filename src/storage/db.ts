@@ -1,7 +1,18 @@
 import Dexie, { type Table } from 'dexie';
 import type { Monster, StudyCard } from '../domain/game';
 
-export interface SaveState { id: 'player'; party: Monster[]; storage: Monster[]; activeIndex: number; dailyNewLimit: number; limitDate: string; }
+export interface SaveState {
+  id: 'player';
+  party: Monster[];
+  storage: Monster[];
+  activeIndex: number;
+  /** Permanent deck-option value, equivalent to Anki's New cards/day. */
+  dailyNewLimit: number;
+  /** Study day on which the temporary Custom Study increase was made. */
+  limitDate: string;
+  /** Anki's "Increase today's new card limit" is temporary. */
+  extraNewCardsToday?: number;
+}
 export interface MediaRecord { id: string; blob: Blob; }
 
 class AdventureDb extends Dexie {

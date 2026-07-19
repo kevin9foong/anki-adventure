@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyGrade, cardCounts, catchChance, damageForGrade, encounterLevel, initialMonster, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, scheduleCard, totalXpForLevel } from './game';
+import { applyGrade, cardCounts, catchChance, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, rollDailyNewLimit, scheduleCard, studyDayKey, totalXpForLevel } from './game';
 
 describe('battle rules', () => {
   it('turns self-grades into the locked damage multipliers', () => {
@@ -51,7 +51,40 @@ describe('card queue', () => {
       { id: 'review-later', front: '空', back: 'sky', state: 'review' as const, dueAt: '2026-07-20T12:00:00Z', introducedOn: '2026-07-01', intervalDays: 4 },
     ];
 
-    expect(cardCounts(cards, now, 3)).toEqual({ new: 1, learning: 2, review: 1 });
+    expect(cardCounts(cards, now, 3)).toEqual({ new: 1, learning: 1, review: 1 });
+  });
+
+  it('uses Anki’s learn-ahead window for red and the whole study day for green', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cards = [
+      { id: 'learning-now', front: '犬', back: 'dog', state: 'learning' as const, dueAt: '2026-07-19T11:00:00Z', introducedOn: '2026-07-19', intervalDays: 0 },
+      { id: 'learning-later', front: '鳥', back: 'bird', state: 'learning' as const, dueAt: '2026-07-19T13:00:00Z', introducedOn: '2026-07-19', intervalDays: 0 },
+      { id: 'review-now', front: '魚', back: 'fish', state: 'review' as const, dueAt: '2026-07-19T11:00:00Z', introducedOn: '2026-07-01', intervalDays: 4 },
+      { id: 'review-later', front: '空', back: 'sky', state: 'review' as const, dueAt: '2026-07-19T13:00:00Z', introducedOn: '2026-07-01', intervalDays: 4 },
+    ];
+
+    expect(cardCounts(cards, now, 5)).toEqual({ new: 0, learning: 1, review: 2 });
+  });
+
+  it('rolls daily limits over at Anki’s local 04:00 study-day boundary', () => {
+    expect(studyDayKey(new Date('2026-07-19T03:59:00Z'), 4)).toBe('2026-07-18');
+    expect(studyDayKey(new Date('2026-07-19T04:00:00Z'), 4)).toBe('2026-07-19');
+  });
+
+  it('keeps a saved daily setting, while expiring only the temporary Custom Study increase', () => {
+    expect(effectiveNewCardLimit(10, 5)).toBe(15);
+    expect(effectiveNewCardLimit(0, 5)).toBe(5);
+    expect(effectiveNewCardLimit(0, 0)).toBe(0);
+    expect(rollDailyNewLimit('2026-07-19', 5, new Date('2026-07-19T12:00:00Z'))).toEqual({ limitDate: '2026-07-19', extraNewCardsToday: 5 });
+    expect(rollDailyNewLimit('2026-07-19', 5, new Date('2026-07-20T04:00:00Z'))).toEqual({ limitDate: '2026-07-20', extraNewCardsToday: 0 });
+  });
+
+  it('recalculates the blue counter as the saved daily setting changes', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cards = Array.from({ length: 10 }, (_, index) => ({ id: `new-${index}`, front: '猫', back: 'cat', state: 'new' as const, dueAt: null, introducedOn: index < 3 ? '2026-07-19' : null, intervalDays: 0 }));
+    expect(cardCounts(cards, now, effectiveNewCardLimit(5)).new).toBe(2);
+    expect(cardCounts(cards, now, effectiveNewCardLimit(10)).new).toBe(7);
+    expect(cardCounts(cards, now, effectiveNewCardLimit(5, 5)).new).toBe(7);
   });
 
   it('prefers overdue cards and only offers allowed new cards once due work is empty', () => {
@@ -73,6 +106,16 @@ describe('card queue', () => {
     expect(updated.dueAt).not.toBeNull();
     expect(new Date(updated.dueAt!).getTime()).toBeGreaterThan(now.getTime());
     expect(updated.stability).toBeGreaterThan(0);
+    expect(updated.lastReviewedAt).toBe(now.toISOString());
+    expect(updated.learningSteps).toBeGreaterThanOrEqual(0);
+  });
+
+  it('retains the FSRS lapse and review timestamp needed for later answers', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const lapsed = scheduleCard({ id: 'review', front: '空', back: 'sky', state: 'review', dueAt: '2026-07-18T04:00:00Z', introducedOn: '2026-01-01', intervalDays: 30, reps: 8, lapses: 2, stability: 30, difficulty: 5, lastReviewedAt: '2026-06-18T12:00:00Z' }, 'again', now);
+    expect(lapsed.state).toBe('relearning');
+    expect(lapsed.lapses).toBe(3);
+    expect(lapsed.lastReviewedAt).toBe(now.toISOString());
   });
 
   it('moves a continuing battle to another available card after a review', () => {

@@ -1,7 +1,7 @@
 import './style.css';
 import './storage.css';
 import { createGame } from './game/createGame';
-import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, encounterLevel, initialMonster, maxHp, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, scheduleCard, species, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
+import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, nextBattleCard, nextCard, placeCaught, resolveEnemyDamage, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
 import { db, exportBackup, getSave, restoreBackup, saveGame, type SaveState } from './storage/db';
 
 const status = document.querySelector<HTMLSpanElement>('#deck-status')!;
@@ -22,25 +22,32 @@ const demoDeck: StudyCard[] = [
 async function boot() {
   cards = await db.cards.toArray();
   if (!cards.length) { await db.cards.bulkPut(demoDeck); cards = demoDeck; }
-  save = await getSave() ?? { id: 'player', party: [initialMonster('tanuki')], storage: [], activeIndex: 0, dailyNewLimit: 10, limitDate: today() };
+  save = await getSave() ?? { id: 'player', party: [initialMonster('tanuki')], storage: [], activeIndex: 0, dailyNewLimit: 10, limitDate: today(), extraNewCardsToday: 0 };
+  ensureDailyLimit();
   await saveGame(save); refreshStatus();
   bridge = createGame('game', startBattle, healParty, () => startBattle('trainer'), () => startBattle('gym'));
 }
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => studyDayKey(new Date());
 const active = () => save.party[save.activeIndex];
+const todayNewLimit = () => effectiveNewCardLimit(save.dailyNewLimit, save.extraNewCardsToday);
+function renderTodayNewLimit(saved = false) {
+  document.querySelector('#today-new-limit')!.textContent = `${saved ? 'Saved. ' : ''}Today’s allowance: ${todayNewLimit()} (${save.dailyNewLimit} daily${save.extraNewCardsToday ? ` + ${save.extraNewCardsToday} Custom Study` : ''}).`;
+}
 function refreshStatus() {
   if (importStatus) { status.textContent = importStatus; return; }
-  const counts = cardCounts(cards, new Date(), save.dailyNewLimit);
+  const counts = cardCounts(cards, new Date(), todayNewLimit());
   status.innerHTML = `<span class="deck-summary">${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}</span><span class="card-count new" aria-label="${counts.new} new cards available today">${counts.new}</span><span class="card-count learning" aria-label="${counts.learning} learning cards due">${counts.learning}</span><span class="card-count due" aria-label="${counts.review} review cards due">${counts.review}</span>`;
 }
 function updateImportStatus(progress: { stage: 'reading' } | { stage: 'cards' | 'media'; completed: number; total: number }) {
   importStatus = progress.stage === 'reading' ? 'Reading deck…' : `Importing ${progress.stage} ${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}…`;
   refreshStatus();
 }
-function ensureDailyLimit() { if (save.limitDate !== today()) { save.limitDate = today(); save.dailyNewLimit = Number(document.querySelector<HTMLInputElement>('#new-limit')!.value) || 10; } }
+function ensureDailyLimit() {
+  Object.assign(save, rollDailyNewLimit(save.limitDate, save.extraNewCardsToday, new Date()));
+}
 
 function startBattle(kind: 'wild' | 'trainer' | 'gym' = 'wild') {
-  ensureDailyLimit(); const card = nextCard(cards, new Date(), save.dailyNewLimit); const player = active();
+  ensureDailyLimit(); const card = nextCard(cards, new Date(), todayNewLimit()); const player = active();
   if (!card) return notice('No due or allowed new cards. Import a deck or raise today’s new-card limit in the pack.');
   if (!player || player.currentHp <= 0) return notice('Visit the Health House: no party monster can battle.');
   if (kind === 'gym' && characterLevel(cards) < 8) return notice('Mt. Bizan Gym opens at trainer level 8. Mature cards raise your trainer level.');
@@ -69,7 +76,7 @@ async function resolveTurn(grade: Grade) {
     battle.message = `${battle.enemy.name} was calmed. ${player.name} gained ${xp} XP!`; await persist(); setTimeout(endBattle, 1000); return;
   }
   player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy))); battle.answer = false; if (!player.currentHp) { battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; }
-  const next = nextBattleCard(cards, scheduled.id, now, save.dailyNewLimit);
+  const next = nextBattleCard(cards, scheduled.id, now, todayNewLimit());
   if (!next) { battle.message = 'No more cards are available for this battle.'; await persist(); renderBattle(); setTimeout(endBattle, 1000); return; }
   battle.card = next;
   await persist(); renderBattle();
@@ -89,11 +96,28 @@ function renderStoragePanel() {
 
 document.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => button.addEventListener('pointerdown', (event) => { event.preventDefault(); const [x, y] = button.dataset.move!.split(',').map(Number); bridge.move(x, y); }));
 document.querySelector('#action-button')!.addEventListener('click', () => bridge.interact());
-document.querySelector('#menu-button')!.addEventListener('click', () => { document.querySelector('#party-summary')!.textContent = `Party: ${save.party.map((m) => `${m.name} Lv${m.level}`).join(', ')}. Storage: ${save.storage.length}/100.`; renderStoragePanel(); menu.showModal(); });
+document.querySelector('#menu-button')!.addEventListener('click', () => { ensureDailyLimit(); document.querySelector<HTMLInputElement>('#new-limit')!.value = String(save.dailyNewLimit); renderTodayNewLimit(); document.querySelector('#party-summary')!.textContent = `Party: ${save.party.map((m) => `${m.name} Lv${m.level}`).join(', ')}. Storage: ${save.storage.length}/100.`; renderStoragePanel(); menu.showModal(); });
 document.querySelector<HTMLInputElement>('#deck-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; importStatus = 'Loading import tools…'; refreshStatus(); try { const { importDeck } = await import('./storage/importer'); const count = await importDeck(file, { onProgress: updateImportStatus }); cards = await db.cards.toArray(); importStatus = undefined; refreshStatus(); notice(`Imported ${count} cards. Media is stored locally and read only when needed.`); } catch (error) { importStatus = undefined; notice(`Import failed: ${error instanceof Error ? error.message : 'unknown error'}`); refreshStatus(); } });
-document.querySelector('#save-limit')!.addEventListener('click', async (event) => { event.preventDefault(); save.dailyNewLimit = Math.max(0, Number(document.querySelector<HTMLInputElement>('#new-limit')!.value) || 0); save.limitDate = today(); await persist(); });
+document.querySelector('#save-limit')!.addEventListener('click', async () => {
+  save.dailyNewLimit = Math.max(0, Number(document.querySelector<HTMLInputElement>('#new-limit')!.value) || 0);
+  await persist();
+  renderTodayNewLimit(true);
+});
+document.querySelector('#increase-today-limit')?.addEventListener('click', async () => {
+  ensureDailyLimit();
+  if (!window.confirm('Increase today’s new-card limit by 5? This resets at Anki’s next study-day rollover.')) return;
+  save.extraNewCardsToday = (save.extraNewCardsToday ?? 0) + 5;
+  await persist();
+  renderTodayNewLimit(true);
+});
 document.querySelector('#export-backup')!.addEventListener('click', async (event) => { event.preventDefault(); const blob = new Blob([JSON.stringify(await exportBackup())], { type: 'application/json' }); const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `anki-adventure-${today()}.json` }); link.click(); URL.revokeObjectURL(link.href); });
 document.querySelector<HTMLInputElement>('#restore-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; await restoreBackup(JSON.parse(await file.text())); cards = await db.cards.toArray(); save = (await getSave())!; refreshStatus(); notice('Backup restored.'); });
 const manifest = document.createElement('link'); manifest.rel = 'manifest'; manifest.href = '/manifest.webmanifest'; document.head.append(manifest);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+// A cache-first service worker is for the deployed PWA only. Keeping it out of
+// the Vite dev server prevents localhost from mixing an old module graph with
+// newly edited source files.
+if ('serviceWorker' in navigator) {
+  if (import.meta.env.PROD) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  else navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))).then(() => caches.keys()).then((keys) => Promise.all(keys.filter((key) => key.startsWith('anki-adventure-shell-')).map((key) => caches.delete(key)))).catch(() => undefined);
+}
 boot();
