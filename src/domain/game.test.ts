@@ -10,12 +10,12 @@ describe('battle rules', () => {
     expect(resolveEnemyDamage(1)).toBe(1);
   });
 
-  it('prevents the next enemy attack after an Easy grade', () => {
-    expect(resolveEnemyDamage(20, 'easy')).toBe(0);
+  it.each(['good', 'easy'] as const)('prevents the next enemy attack after a %s grade', (grade) => {
+    expect(resolveEnemyDamage(20, grade)).toBe(0);
   });
 
-  it('reduces the next enemy attack to 0.7x after a Good grade', () => {
-    expect(resolveEnemyDamage(20, 'good')).toBe(11);
+  it('reduces the next enemy attack to 0.7x after a Hard grade', () => {
+    expect(resolveEnemyDamage(20, 'hard')).toBe(11);
   });
 
   it('uses the locked catch chance and HP modifier', () => {

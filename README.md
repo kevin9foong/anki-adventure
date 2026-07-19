@@ -34,8 +34,8 @@ Every attack turn is one review. Grade multipliers are:
 | Grade | Damage multiplier | Next enemy attack |
 | --- | ---: | --- |
 | Again | 0.3× | Normal damage |
-| Hard | 0.5× | Normal damage |
-| Good | 1.0× | 0.7× damage |
+| Hard | 0.5× | 0.7× damage |
+| Good | 1.0× | No damage |
 | Easy | 1.5× | No damage |
 
 Monster combat stats scale with level:
@@ -47,7 +47,7 @@ player damage = round(base power × grade multiplier)
 enemy damage  = max(1, round(enemy base power × 0.75 × grade defense))
 ```
 
-Grade defense is 1.0× for Again and Hard, 0.7× for Good, and 0 for Easy. The minimum-damage rule does not apply to Easy's guard.
+Grade defense is 1.0× for Again, 0.7× for Hard, and 0 for Good and Easy. The minimum-damage rule does not apply to a guard.
 
 Enemy levels are selected at battle start from the lowest living party level through the highest living party level plus five. Route trainers use the same review-driven battle loop; the Mt. Bizan gym unlocks at trainer level 8 and sends a three-monster challenge.
 

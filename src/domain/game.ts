@@ -52,7 +52,7 @@ export const maxHp = (monster: Pick<Monster, 'species' | 'level'>) => species[mo
 export const basePower = (monster: Pick<Monster, 'species' | 'level'>) => species[monster.species].basePower + 2 * monster.level;
 export const totalXpForLevel = (level: number) => level ** 3;
 export const damageForGrade = (power: number, grade: Grade) => Math.max(1, Math.round(power * ({ again: 0.3, hard: 0.5, good: 1, easy: 1.5 } as const)[grade]));
-export const resolveEnemyDamage = (power: number, grade?: Grade) => grade === 'easy' ? 0 : Math.max(1, Math.round(power * 0.75 * (grade === 'good' ? 0.7 : 1)));
+export const resolveEnemyDamage = (power: number, grade?: Grade) => grade === 'good' || grade === 'easy' ? 0 : Math.max(1, Math.round(power * 0.75 * (grade === 'hard' ? 0.7 : 1)));
 
 export function catchChance(grade: Grade, currentHp: number, enemyMaxHp: number) {
   const base = ({ again: 0.05, hard: 0.15, good: 0.35, easy: 0.55 } as const)[grade];
