@@ -1,0 +1,5 @@
+.storage-panel { border-top:1px solid #92b5cb; padding-top:8px; display:grid; gap:5px; }
+.storage-panel h3,.storage-panel p { margin:0; font-size:11px; }
+.monster-list { display:grid; gap:4px; font-size:10px; }
+.monster-list button { font-size:9px; text-align:left; padding:4px; }
+.monster-list small { color:#b9d5db; }
