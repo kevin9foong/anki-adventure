@@ -24,6 +24,21 @@ describe('deck import', () => {
     await expect(db.cards.get('anki-1')).resolves.toMatchObject({ front: '猫', back: 'cat', reading: 'ねこ' });
   });
 
+  it('imports Kaishi meanings, examples, and furigana by their field names', async () => {
+    const file = await anki21File(
+      [[1, '私', 'わたし', 'I', '私[わたし]', '<b>私</b>はアンです。', 'I am Ann.', '<b>私[わたし]</b>はアンです。']],
+      {},
+      ['Word', 'Word Reading', 'Word Meaning', 'Word Furigana', 'Sentence', 'Sentence Meaning', 'Sentence Furigana'],
+    );
+
+    await importDeck(file);
+
+    await expect(db.cards.get('anki-1')).resolves.toMatchObject({
+      front: '私', back: 'I', reading: 'わたし', furigana: '私[わたし]',
+      exampleSentence: '私はアンです。', exampleSentenceTranslation: 'I am Ann.', exampleSentenceFurigana: '私[わたし]はアンです。',
+    });
+  });
+
   it('reports card and media progress while importing a package', async () => {
     const progress: unknown[] = [];
 
@@ -48,11 +63,15 @@ describe('deck import', () => {
   });
 });
 
-async function anki21File(notes: Array<[number, string, string, string]>, media: Record<string, string> = {}): Promise<File> {
+async function anki21File(notes: Array<[number, ...string[]]>, media: Record<string, string> = {}, fieldNames?: string[]): Promise<File> {
   const SQL = await initSqlJs();
   const collection = new SQL.Database();
-  collection.run('CREATE TABLE notes (id INTEGER PRIMARY KEY, flds TEXT)');
-  for (const [id, front, back, reading] of notes) collection.run('INSERT INTO notes VALUES (?, ?)', [id, `${front}\u001f${back}\u001f${reading}`]);
+  collection.run('CREATE TABLE notes (id INTEGER PRIMARY KEY, mid INTEGER, flds TEXT)');
+  if (fieldNames) {
+    collection.run('CREATE TABLE col (models TEXT)');
+    collection.run('INSERT INTO col VALUES (?)', [JSON.stringify({ 1: { flds: fieldNames.map((name) => ({ name })) } })]);
+  }
+  for (const [id, ...fields] of notes) collection.run('INSERT INTO notes VALUES (?, ?, ?)', [id, fieldNames ? 1 : 0, fields.join('\u001f')]);
   const archive = new JSZip();
   archive.file('collection.anki21', collection.export());
   if (Object.keys(media).length) {

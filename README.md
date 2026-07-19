@@ -84,7 +84,7 @@ See [map research](docs/map-research.md) for the public location references used
 Open the **☰ pack** menu and select a `.csv` or Anki `.apkg` file.
 
 - CSV expects `front,back,reading` columns; a header row is optional.
-- APKG files are parsed entirely in the browser. Note fields become local cards and package media is stored separately in IndexedDB so it is not part of the initial game download.
+- APKG files are parsed entirely in the browser. Recognized Anki field names include word/front, meaning/back, reading, furigana, example sentence, and sentence meaning; package media is stored separately in IndexedDB so it is not part of the initial game download.
 - Importing cards currently adds/replaces records with matching IDs; use a fresh browser profile for a completely clean game.
 - Use **Export backup** to download a JSON copy of the cards and player save. **Restore backup** imports it on the same device.
 

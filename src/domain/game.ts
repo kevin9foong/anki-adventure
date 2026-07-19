@@ -14,6 +14,10 @@ export interface StudyCard {
   front: string;
   back: string;
   reading?: string;
+  furigana?: string;
+  exampleSentence?: string;
+  exampleSentenceTranslation?: string;
+  exampleSentenceFurigana?: string;
   media?: string[];
   state: CardState;
   dueAt: string | null;

@@ -17,3 +17,9 @@
 - **Decision:** Easy negates, and Good reduces to 0.7×, the automatic enemy attack following that review grade.
 - **Rationale:** The battle loop resolves the player's grade-based attack before the enemy's response, so this makes the requested “next turn” effect observable without persisting a separate status across cards or battles.
 - **Trade-off:** The protection does not carry to a later turn when the enemy is defeated or a catch succeeds, because no enemy attack occurs in those outcomes.
+
+## 2026-07-19 — APKG fields are resolved by Anki model name
+
+- **Decision:** Resolve common word, meaning, reading, furigana, and example-sentence fields from the note model's field names; fall back to the original first-three-field convention when model metadata is unavailable.
+- **Rationale:** Kaishi places its translation and examples after reading, while other decks commonly use Front/Back fields. Named resolution preserves both formats and makes sentence support reusable.
+- **Trade-off:** Decks with unconventional field names still need aliases added to the importer or will use the positional fallback.

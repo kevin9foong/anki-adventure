@@ -4,8 +4,9 @@ import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import type { StudyCard } from '../domain/game';
 import { db } from './db';
 
-const strip = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const strip = (html: string) => html.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 const MEDIA_BATCH_SIZE = 10;
+type AnkiModel = { flds?: Array<{ name?: string }> };
 
 export type ImportProgress =
   | { stage: 'reading' }
@@ -53,13 +54,25 @@ async function apkgCards(buffer: ArrayBuffer, onProgress?: ImportDeckOptions['on
   if (!collection) throw new Error('This .apkg has no Anki collection database.');
   const SQL = await initSqlJs({ locateFile: () => typeof window === 'undefined' ? new URL('../../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url).pathname : wasmUrl });
   const database = new SQL.Database(new Uint8Array(await collection.async('arraybuffer')));
-  const result = database.exec('SELECT id, flds FROM notes');
+  const result = database.exec('SELECT id, mid, flds FROM notes');
   const rows = result[0]?.values ?? [];
+  const modelFields = ankiModelFields(database);
   const mediaMapFile = zip.file('media');
   const mediaMap = mediaMapFile ? JSON.parse(await mediaMapFile.async('text')) as Record<string, string> : {};
   const cards = rows.map((row) => {
-    const fields = String(row[1]).split('\u001f');
-    return makeCard(`anki-${row[0]}`, strip(fields[0] ?? ''), strip(fields[1] ?? ''), strip(fields[2] ?? ''));
+    const fields = String(row[2]).split('\u001f');
+    const names = modelFields.get(String(row[1]));
+    const field = (aliases: string[], fallback?: number) => strip(names ? namedField(fields, names, aliases) : fallback === undefined ? '' : fields[fallback] ?? '');
+    return makeCard(
+      `anki-${row[0]}`,
+      field(['word', 'front', 'expression', 'vocabulary', 'vocab', 'japanese', 'term'], 0),
+      field(['wordmeaning', 'meaning', 'back', 'definition', 'translation', 'english', 'englishmeaning'], 1),
+      field(['wordreading', 'reading', 'pronunciation', 'kana'], 2),
+      field(['wordfurigana', 'furigana']),
+      field(['sentence', 'examplesentence', 'sentencejapanese', 'japanesesentence']),
+      field(['sentencemeaning', 'sentencetranslation', 'examplesentencemeaning', 'examplesentencetranslation', 'sentenceenglish', 'englishsentence']),
+      field(['sentencefurigana', 'examplesentencefurigana']),
+    );
   }).filter((card) => card.front && card.back);
   onProgress?.({ stage: 'cards', completed: cards.length, total: cards.length });
   // Decode only a few blobs at a time: large Anki packages can contain thousands of images.
@@ -74,6 +87,29 @@ async function apkgCards(buffer: ArrayBuffer, onProgress?: ImportDeckOptions['on
   return cards;
 }
 
-function makeCard(id: string, front: string, back: string, reading?: string): StudyCard {
-  return { id, front, back, reading, state: 'new', dueAt: null, introducedOn: null, intervalDays: 0, reps: 0 };
+function ankiModelFields(database: { exec: (sql: string) => Array<{ values: unknown[][] }> }) {
+  try {
+    const models = JSON.parse(String(database.exec('SELECT models FROM col')[0]?.values[0]?.[0] ?? '{}')) as Record<string, AnkiModel>;
+    return new Map(Object.entries(models).map(([id, model]) => [id, (model.flds ?? []).map((field) => field.name ?? '')]));
+  } catch {
+    // Older and minimal collections may not include model metadata; retain positional import for them.
+    return new Map<string, string[]>();
+  }
+}
+
+function namedField(fields: string[], names: string[], aliases: string[]) {
+  const normalizedAliases = new Set(aliases.map(normalizeFieldName));
+  const index = names.findIndex((name) => normalizedAliases.has(normalizeFieldName(name)));
+  return index === -1 ? '' : fields[index] ?? '';
+}
+
+function normalizeFieldName(name: string) { return name.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function makeCard(id: string, front: string, back: string, reading?: string, furigana?: string, exampleSentence?: string, exampleSentenceTranslation?: string, exampleSentenceFurigana?: string): StudyCard {
+  return {
+    id, front, back, reading, furigana: furigana || undefined,
+    exampleSentence: exampleSentence || undefined, exampleSentenceTranslation: exampleSentenceTranslation || undefined,
+    exampleSentenceFurigana: exampleSentenceFurigana || undefined,
+    state: 'new', dueAt: null, introducedOn: null, intervalDays: 0, reps: 0,
+  };
 }

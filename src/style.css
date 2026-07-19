@@ -8,6 +8,8 @@
 .card-count.due { color:#7edc8d; }
 .new-card-stats { display:grid; gap:2px; }
 .new-card-stats p { margin:0; }
+.example-sentence { margin:7px 0 0; font-size:17px; line-height:1.35; }
+.example-sentence small { display:block; margin-top:3px; }
 
 /* Keep controls beneath the canvas so they cannot cover the game on short Safari viewports. */
 #controls { --control-size:clamp(44px,14vw,52px); width:100%; padding:clamp(14px,3vh,24px) clamp(4px,2vw,14px) 0; }
