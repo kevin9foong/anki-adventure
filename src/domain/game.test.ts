@@ -66,6 +66,16 @@ describe('card queue', () => {
     expect(cardCounts(cards, now, 5)).toEqual({ new: 0, learning: 1, review: 2 });
   });
 
+  it('starts a battle with a learning card shown in the red learn-ahead count', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cards = [
+      { id: 'learning-soon', front: '鳥', back: 'bird', state: 'learning' as const, dueAt: '2026-07-19T12:10:00Z', introducedOn: '2026-07-19', intervalDays: 0 },
+    ];
+
+    expect(cardCounts(cards, now, 5).learning).toBe(1);
+    expect(nextCard(cards, now, 5)?.id).toBe('learning-soon');
+  });
+
   it('rolls daily limits over at Anki’s local 04:00 study-day boundary', () => {
     expect(studyDayKey(new Date('2026-07-19T03:59:00Z'), 4)).toBe('2026-07-18');
     expect(studyDayKey(new Date('2026-07-19T04:00:00Z'), 4)).toBe('2026-07-19');

@@ -120,11 +120,12 @@ const dueAtOrInfinity = (card: StudyCard) => card.dueAt ? new Date(card.dueAt).g
 const byDueThenId = (a: StudyCard, b: StudyCard) => dueAtOrInfinity(a) - dueAtOrInfinity(b) || a.id.localeCompare(b.id);
 
 /**
- * The order used by Anki's default scheduler: currently-due intraday
- * learning/relearning, then today's reviews, then the remaining new allowance.
+ * The order used by Anki's scheduler: intraday learning/relearning within the
+ * learn-ahead window, then today's reviews, then the remaining new allowance.
  */
 export function nextCard(cards: StudyCard[], now: Date, dailyNewLimit: number): StudyCard | undefined {
-  const intraday = cards.filter((card) => (card.state === 'learning' || card.state === 'relearning') && dueAtOrInfinity(card) <= now.getTime()).sort(byDueThenId);
+  const learnAhead = now.getTime() + ANKI_LEARN_AHEAD_MINUTES * 60_000;
+  const intraday = cards.filter((card) => (card.state === 'learning' || card.state === 'relearning') && dueAtOrInfinity(card) <= learnAhead).sort(byDueThenId);
   if (intraday.length) return intraday[0];
   const reviews = cards.filter((card) => card.state === 'review' && dueAtOrInfinity(card) <= nextStudyDayAt(now).getTime()).sort(byDueThenId);
   if (reviews.length) return reviews[0];
@@ -141,8 +142,7 @@ export function cardCounts(cards: StudyCard[], now: Date, dailyNewLimit: number)
   const endOfStudyDay = nextStudyDayAt(now).getTime();
   const introducedToday = cards.filter((card) => card.introducedOn === today).length;
   return {
-    // These are queue counts, not a count of every card in each state. This is
-    // why a red card due in 10 minutes is shown, while one due tomorrow is not.
+    // These are queue counts, not a count of every card in each state.
     new: Math.min(cards.filter((card) => card.state === 'new').length, Math.max(0, dailyNewLimit - introducedToday)),
     learning: cards.filter((card) => (card.state === 'learning' || card.state === 'relearning') && dueAtOrInfinity(card) <= learnAhead).length,
     review: cards.filter((card) => card.state === 'review' && dueAtOrInfinity(card) <= endOfStudyDay).length,
