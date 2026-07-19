@@ -9,6 +9,7 @@ const battleEl = document.querySelector<HTMLDivElement>('#battle')!;
 const menu = document.querySelector<HTMLDialogElement>('#menu')!;
 let save: SaveState;
 let cards: StudyCard[] = [];
+let importStatus: string | undefined;
 let bridge: ReturnType<typeof createGame>;
 let battle: { enemy: Monster; card: StudyCard; answer: boolean; mode: 'fight' | 'catch'; kind: 'wild' | 'trainer' | 'gym'; remainingEnemies: number; message: string } | undefined;
 
@@ -27,7 +28,11 @@ async function boot() {
 }
 const today = () => new Date().toISOString().slice(0, 10);
 const active = () => save.party[save.activeIndex];
-function refreshStatus() { status.textContent = `${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}`; }
+function refreshStatus() { status.textContent = importStatus ?? `${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}`; }
+function updateImportStatus(progress: { stage: 'reading' } | { stage: 'cards' | 'media'; completed: number; total: number }) {
+  importStatus = progress.stage === 'reading' ? 'Reading deck…' : `Importing ${progress.stage} ${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}…`;
+  refreshStatus();
+}
 function ensureDailyLimit() { if (save.limitDate !== today()) { save.limitDate = today(); save.dailyNewLimit = Number(document.querySelector<HTMLInputElement>('#new-limit')!.value) || 10; } }
 
 function startBattle(kind: 'wild' | 'trainer' | 'gym' = 'wild') {
@@ -77,7 +82,7 @@ function renderStoragePanel() {
 document.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => button.addEventListener('pointerdown', (event) => { event.preventDefault(); const [x, y] = button.dataset.move!.split(',').map(Number); bridge.move(x, y); }));
 document.querySelector('#action-button')!.addEventListener('click', () => bridge.interact());
 document.querySelector('#menu-button')!.addEventListener('click', () => { document.querySelector('#party-summary')!.textContent = `Party: ${save.party.map((m) => `${m.name} Lv${m.level}`).join(', ')}. Storage: ${save.storage.length}/100.`; renderStoragePanel(); menu.showModal(); });
-document.querySelector<HTMLInputElement>('#deck-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; status.textContent = 'Loading import tools…'; try { const { importDeck } = await import('./storage/importer'); status.textContent = 'Importing deck locally…'; const count = await importDeck(file); cards = await db.cards.toArray(); refreshStatus(); notice(`Imported ${count} cards. Media is stored locally and read only when needed.`); } catch (error) { notice(`Import failed: ${error instanceof Error ? error.message : 'unknown error'}`); refreshStatus(); } });
+document.querySelector<HTMLInputElement>('#deck-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; importStatus = 'Loading import tools…'; refreshStatus(); try { const { importDeck } = await import('./storage/importer'); const count = await importDeck(file, { onProgress: updateImportStatus }); cards = await db.cards.toArray(); importStatus = undefined; refreshStatus(); notice(`Imported ${count} cards. Media is stored locally and read only when needed.`); } catch (error) { importStatus = undefined; notice(`Import failed: ${error instanceof Error ? error.message : 'unknown error'}`); refreshStatus(); } });
 document.querySelector('#save-limit')!.addEventListener('click', async (event) => { event.preventDefault(); save.dailyNewLimit = Math.max(0, Number(document.querySelector<HTMLInputElement>('#new-limit')!.value) || 0); save.limitDate = today(); await persist(); });
 document.querySelector('#export-backup')!.addEventListener('click', async (event) => { event.preventDefault(); const blob = new Blob([JSON.stringify(await exportBackup())], { type: 'application/json' }); const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `anki-adventure-${today()}.json` }); link.click(); URL.revokeObjectURL(link.href); });
 document.querySelector<HTMLInputElement>('#restore-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; await restoreBackup(JSON.parse(await file.text())); cards = await db.cards.toArray(); save = (await getSave())!; refreshStatus(); notice('Backup restored.'); });
