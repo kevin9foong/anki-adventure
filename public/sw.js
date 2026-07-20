@@ -1,7 +1,7 @@
 // Bump whenever the app shell changes. The old cache-first worker otherwise
 // serves stale Vite modules after a scheduler/UI update and can leave the map
 // stuck on its loading screen.
-const CACHE = 'anki-adventure-shell-v2';
+const CACHE = 'anki-adventure-shell-v3';
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.add('/'))));
 self.addEventListener('activate', (event) => event.waitUntil(Promise.all([
   self.clients.claim(),

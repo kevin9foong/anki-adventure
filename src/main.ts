@@ -268,11 +268,12 @@ document.querySelector('#increase-today-limit')?.addEventListener('click', async
 document.querySelector('#export-backup')!.addEventListener('click', async (event) => { event.preventDefault(); const blob = new Blob([JSON.stringify(await exportBackup())], { type: 'application/json' }); const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `anki-adventure-${today()}.json` }); link.click(); URL.revokeObjectURL(link.href); });
 document.querySelector<HTMLInputElement>('#restore-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; await restoreBackup(JSON.parse(await file.text())); cards = await db.cards.toArray(); save = (await getSave())!; refreshStatus(); notice('Backup restored.'); });
 const manifest = document.createElement('link'); manifest.rel = 'manifest'; manifest.href = '/manifest.webmanifest'; document.head.append(manifest);
-// A cache-first service worker is for the deployed PWA only. Keeping it out of
-// the Vite dev server prevents localhost from mixing an old module graph with
-// newly edited source files.
+// A cache-first service worker is for deployed PWAs only. Pages local dev
+// serves a production bundle, so checking PROD alone would cache a stale local
+// shell and leave the game on its loading screen.
+const localHost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
 if ('serviceWorker' in navigator) {
-  if (import.meta.env.PROD) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  if (import.meta.env.PROD && !localHost) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
   else navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))).then(() => caches.keys()).then((keys) => Promise.all(keys.filter((key) => key.startsWith('anki-adventure-shell-')).map((key) => caches.delete(key)))).catch(() => undefined);
 }
 boot();
