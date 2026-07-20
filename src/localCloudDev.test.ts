@@ -7,6 +7,7 @@ describe('local cloud development commands', () => {
 
     expect(scripts['d1:migrate:local']).toContain('wrangler d1 migrations apply anki-adventure --local');
     expect(scripts['dev:cloud']).toContain('npm run d1:migrate:local');
+    expect(scripts['dev:cloud']).toContain('VITE_DISABLE_SERVICE_WORKER=1');
     expect(scripts['dev:cloud']).toContain('wrangler pages dev dist');
   });
 });

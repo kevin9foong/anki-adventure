@@ -269,11 +269,11 @@ document.querySelector('#export-backup')!.addEventListener('click', async (event
 document.querySelector<HTMLInputElement>('#restore-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; await restoreBackup(JSON.parse(await file.text())); cards = await db.cards.toArray(); save = (await getSave())!; refreshStatus(); notice('Backup restored.'); });
 const manifest = document.createElement('link'); manifest.rel = 'manifest'; manifest.href = '/manifest.webmanifest'; document.head.append(manifest);
 // A cache-first service worker is for deployed PWAs only. Pages local dev
-// serves a production bundle, so checking PROD alone would cache a stale local
-// shell and leave the game on its loading screen.
-const localHost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+// serves a production bundle and may be opened through a LAN IP, so a build
+// flag (not hostname detection) keeps its stale shell out of every local URL.
+const serviceWorkerEnabled = import.meta.env.PROD && import.meta.env.VITE_DISABLE_SERVICE_WORKER !== '1';
 if ('serviceWorker' in navigator) {
-  if (import.meta.env.PROD && !localHost) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  if (serviceWorkerEnabled) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
   else navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))).then(() => caches.keys()).then((keys) => Promise.all(keys.filter((key) => key.startsWith('anki-adventure-shell-')).map((key) => caches.delete(key)))).catch(() => undefined);
 }
 boot();
