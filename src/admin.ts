@@ -13,7 +13,7 @@ export class AdminApiError extends Error {
 
 /** The key stays in this object only; no storage or URL APIs are used. */
 export class AdminApi {
-  constructor(private readonly key: string, private readonly fetcher: typeof fetch = fetch) {}
+  constructor(private readonly key: string, private readonly fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init)) {}
 
   verify() { return this.request('/api/admin/verify', { method: 'POST' }).then(() => undefined); }
   listSaves() { return this.read<{ saves: AdminSave[] }>('/api/admin/saves').then((body) => body.saves); }

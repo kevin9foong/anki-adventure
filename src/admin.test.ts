@@ -3,6 +3,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { AdminApi, AdminApiError, createAdminApp } from './admin';
 
 describe('admin browser API', () => {
+  it('keeps the global fetch receiver when using the browser default', async () => {
+    const originalFetch = globalThis.fetch;
+    let receiver: unknown;
+    globalThis.fetch = function (this: unknown) {
+      receiver = this;
+      return Promise.resolve(new Response(JSON.stringify({ saves: [] })));
+    } as typeof fetch;
+    try {
+      await new AdminApi('ephemeral-key').listSaves();
+      expect(receiver).toBe(globalThis);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('sends the in-memory key only as an admin request header', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ saves: [] })));
     await new AdminApi('ephemeral-key', fetcher).listSaves();

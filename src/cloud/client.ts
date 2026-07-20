@@ -30,7 +30,7 @@ export class CloudApiError extends Error {
 }
 
 export class CloudApi {
-  constructor(private readonly token: string, private readonly fetcher: typeof fetch = fetch) {}
+  constructor(private readonly token: string, private readonly fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init)) {}
 
   async session(): Promise<CloudSession> {
     const response = await this.request('/api/session');
