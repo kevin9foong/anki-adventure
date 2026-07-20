@@ -3,5 +3,17 @@ dist/
 *.tsbuildinfo
 .DS_Store
 
+# Local deployment credentials and Cloudflare/Wrangler state.
+.env
+.env.*
+.dev.vars
+.wrangler/
+
+# Local D1/database files and exported player backups.
+*.sqlite
+*.sqlite3
+*.db
+*.backup.json
+
 # Local anki decks 
 *.apkg
