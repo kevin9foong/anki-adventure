@@ -39,6 +39,19 @@ describe('deck import', () => {
     });
   });
 
+  it('imports grammar cards with Japanese semantic field names', async () => {
+    const file = await anki21File(
+      [[1, '〜ことにする', 'to decide to do', 'V-dictionary form', 'N4', '〜ことにする。']],
+      {},
+      ['文型', '意味', '接続', 'JLPTレベル', '例文1'],
+    );
+
+    await expect(importDeck(file)).resolves.toBe(1);
+    await expect(db.cards.get('anki-1')).resolves.toMatchObject({
+      front: '〜ことにする', back: 'to decide to do', exampleSentence: '〜ことにする。',
+    });
+  });
+
   it('reports card and media progress while importing a package', async () => {
     const progress: unknown[] = [];
 

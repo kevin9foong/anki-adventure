@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import initSqlJs from 'sql.js';
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+import { ankiField, type AnkiFieldConcept } from '../ankiFields';
 import type { StudyCard } from '../domain/game';
 import { db } from './db';
 
@@ -62,16 +63,11 @@ async function apkgCards(buffer: ArrayBuffer, onProgress?: ImportDeckOptions['on
   const cards = rows.map((row) => {
     const fields = String(row[2]).split('\u001f');
     const names = modelFields.get(String(row[1]));
-    const field = (aliases: string[], fallback?: number) => strip(names ? namedField(fields, names, aliases) : fallback === undefined ? '' : fields[fallback] ?? '');
+    const field = (concept: AnkiFieldConcept, fallback?: number) => strip(ankiField(fields, names, concept, fallback));
     return makeCard(
       `anki-${row[0]}`,
-      field(['word', 'front', 'expression', 'vocabulary', 'vocab', 'japanese', 'term'], 0),
-      field(['wordmeaning', 'meaning', 'back', 'definition', 'translation', 'english', 'englishmeaning'], 1),
-      field(['wordreading', 'reading', 'pronunciation', 'kana'], 2),
-      field(['wordfurigana', 'furigana']),
-      field(['sentence', 'examplesentence', 'sentencejapanese', 'japanesesentence']),
-      field(['sentencemeaning', 'sentencetranslation', 'examplesentencemeaning', 'examplesentencetranslation', 'sentenceenglish', 'englishsentence']),
-      field(['sentencefurigana', 'examplesentencefurigana']),
+      field('front', 0), field('back', 1), field('reading', 2), field('furigana'),
+      field('exampleSentence'), field('exampleSentenceTranslation'), field('exampleSentenceFurigana'),
     );
   }).filter((card) => card.front && card.back);
   onProgress?.({ stage: 'cards', completed: cards.length, total: cards.length });
@@ -96,14 +92,6 @@ function ankiModelFields(database: { exec: (sql: string) => Array<{ values: unkn
     return new Map<string, string[]>();
   }
 }
-
-function namedField(fields: string[], names: string[], aliases: string[]) {
-  const normalizedAliases = new Set(aliases.map(normalizeFieldName));
-  const index = names.findIndex((name) => normalizedAliases.has(normalizeFieldName(name)));
-  return index === -1 ? '' : fields[index] ?? '';
-}
-
-function normalizeFieldName(name: string) { return name.toLowerCase().replace(/[^a-z0-9]/g, ''); }
 
 function makeCard(id: string, front: string, back: string, reading?: string, furigana?: string, exampleSentence?: string, exampleSentenceTranslation?: string, exampleSentenceFurigana?: string): StudyCard {
   return {

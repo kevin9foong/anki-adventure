@@ -66,3 +66,9 @@
 - **Decision:** The admin browser parses CSV and APKG sources into recognized text cards before sending them to the admin API; APKG media is discarded.
 - **Rationale:** The server API persists only normalized text-card fields, and keeping APKG parsing in the browser avoids sending opaque archives or media into D1.
 - **Trade-off:** The APKG parser adds a lazy-loaded SQL/WebAssembly chunk to the admin route only; it is not part of normal gameplay startup.
+
+## 2026-07-20 — APKG fields are matched by semantic aliases across scripts
+
+- **Decision:** Both local and curated APKG imports use one Unicode-preserving resolver for semantic fields, with localized aliases and numbered example-sentence fields.
+- **Rationale:** Note-type field labels are user-facing and commonly localized; matching semantic concepts such as pattern, meaning, and example rather than a source deck's schema preserves Kaishi support while importing grammar decks.
+- **Trade-off:** An unfamiliar semantic label still requires a deliberate alias addition; guessing from field order remains limited to collections without model metadata.
