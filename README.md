@@ -123,4 +123,6 @@ npm run build  # type-check and create ./dist
 npm run preview # serve the production build
 ```
 
-Deploy the `dist/` folder to any static host such as Cloudflare Pages, Vercel, or Netlify. No backend, database, or environment variables are required.
+Deploy the `dist/` folder to any static host such as Cloudflare Pages, Vercel, or Netlify. No backend, database, or environment variables are required for local-first play.
+
+For optional Cloudflare D1 cloud saves and curated decks, follow the [cloud persistence deployment runbook](docs/cloud-persistence.md). It covers the D1 binding, migrations, `ADMIN_KEY` secret, Pages deployment, and private-beta smoke test.

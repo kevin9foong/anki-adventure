@@ -1,5 +1,23 @@
 # Implementation decisions
 
+## 2026-07-20 — Catalogue metadata is separate from selected deck content
+
+- **Decision:** A bearer-authenticated deck request returns the published deck IDs, names, and card counts for selection, while returning card text only for that save's selected decks.
+- **Rationale:** A new save needs an authorized catalogue to choose its first deck, but a bearer link must not become a broad content-download endpoint.
+- **Trade-off:** The client makes one response handle both catalogue and selected-content views; future pagination can split those concerns if the catalogue grows.
+
+## 2026-07-20 — Lifecycle service receives only atomic persistence operations
+
+- **Decision:** Keep deck publish/delete and save delete policy in a portable service that asks its repository port to perform each fan-out write atomically.
+- **Rationale:** The same service can calculate the visible impact before confirmation while the D1 adapter owns SQL transaction details and token hashing.
+- **Trade-off:** The adapter must implement a small set of lifecycle operations instead of exposing generic table access.
+
+## 2026-07-20 — Equal-urgency cloud queue ties select a deck before a card
+
+- **Decision:** When selected cloud cards have the same eligible due time (or are all eligible new cards), choose uniformly among their decks and then among that deck's tied cards.
+- **Rationale:** This preserves urgency ordering while preventing a large selected deck from dominating equal-time ties solely through card count.
+- **Trade-off:** The queue is deck-fair, rather than perfectly uniform over every tied card.
+
 ## 2026-07-19 — Defeated party recovery returns directly to the Health House
 
 - **Decision:** When the last living party monster faints, restore the whole party, close the battle, and move the overworld character to the Health House.
@@ -30,3 +48,15 @@
 - **Rationale:** Changing intent before grading should not hide, consume, or reschedule the review card, and it lets a failed capture plan be reconsidered without restarting the turn.
 - **Trade-off:** The mode button is deliberately unavailable before the answer is revealed, when there is no gradeable review to redirect.
 - **Verification gap:** This repository has neither a design source/Storybook nor `agent-browser`, so visual verification was limited to the interaction test and production build.
+
+## 2026-07-20 — Cloud mutations use the save revision as their write gate
+
+- **Decision:** Every cloud player mutation updates `cloud_saves.revision` only when it equals the request's `expectedRevision`; a failed update returns `409` with `reloadRequired` instead of retrying.
+- **Rationale:** The bearer link can be open on multiple devices, and a reload is safer than replaying a grade or overwriting remotely changed party state.
+- **Trade-off:** A player must reload after a concurrent change; cloud mode intentionally does not keep an offline outbox or merge edits automatically.
+
+## 2026-07-20 — Admin normalizes deck files before publishing
+
+- **Decision:** The admin browser parses CSV and APKG sources into recognized text cards before sending them to the admin API; APKG media is discarded.
+- **Rationale:** The server API persists only normalized text-card fields, and keeping APKG parsing in the browser avoids sending opaque archives or media into D1.
+- **Trade-off:** The APKG parser adds a lazy-loaded SQL/WebAssembly chunk to the admin route only; it is not part of normal gameplay startup.
