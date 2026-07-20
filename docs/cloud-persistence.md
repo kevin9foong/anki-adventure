@@ -3,6 +3,26 @@
 Cloud persistence is an optional Cloudflare Pages + D1 mode. The ordinary game
 URL remains local IndexedDB play; only a `?save=` link uses the cloud service.
 
+## Local cloud development
+
+Use a separate local D1 database and a Git-ignored local admin key:
+
+```bash
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars and replace the example ADMIN_KEY.
+npm run dev:cloud
+```
+
+`dev:cloud` applies the checked-in migrations to Wrangler's local D1 state,
+builds the browser app, and starts Pages Functions and static assets together.
+Open the URL Wrangler prints, then visit `/admin` and enter the same
+`ADMIN_KEY` configured in `.dev.vars`. The local D1 state lives under
+`.wrangler/` and is ignored by Git.
+
+Use `npm run d1:migrate:local` by itself after adding a migration while the
+local server is stopped. To start from an empty local database, delete the
+ignored `.wrangler/` directory and run `npm run dev:cloud` again.
+
 ## 1. Create the D1 database
 
 From this repository, authenticate with the Cloudflare account that owns the

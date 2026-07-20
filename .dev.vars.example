@@ -1,0 +1,3 @@
+# Copy this file to .dev.vars for `npm run dev:cloud`.
+# Keep the real value private: .dev.vars is ignored by Git.
+ADMIN_KEY=replace-with-a-long-local-only-admin-key

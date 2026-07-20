@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:cloud": "npm run d1:migrate:local && npm run build && wrangler pages dev dist --ip 0.0.0.0",
+    "d1:migrate:local": "wrangler d1 migrations apply anki-adventure --local",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run"
@@ -23,6 +25,7 @@
     "happy-dom": "^20.11.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.112.0"
   }
 }

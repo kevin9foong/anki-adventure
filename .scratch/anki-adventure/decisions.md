@@ -1,5 +1,11 @@
 # Implementation decisions
 
+## 2026-07-20 — Local cloud development uses Pages Functions and local D1 together
+
+- **Decision:** `npm run dev:cloud` first applies the committed migrations to Wrangler's local D1 state, then builds `dist` and serves it through `wrangler pages dev`; `.dev.vars` supplies the local-only `ADMIN_KEY`.
+- **Rationale:** This exercises the actual Pages routing, D1 binding, and admin authorization boundary rather than Vite's static-only server.
+- **Trade-off:** The command performs a production-style browser build before starting, rather than offering Vite hot-module replacement for cloud mode.
+
 ## 2026-07-20 — Catalogue metadata is separate from selected deck content
 
 - **Decision:** A bearer-authenticated deck request returns the published deck IDs, names, and card counts for selection, while returning card text only for that save's selected decks.
