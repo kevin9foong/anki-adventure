@@ -10,18 +10,18 @@ Use a separate local D1 database and a Git-ignored local admin key:
 ```bash
 cp .dev.vars.example .dev.vars
 # Edit .dev.vars and replace the example ADMIN_KEY.
-npm run dev:cloud
+npm run dev
 ```
 
-`dev:cloud` applies the checked-in migrations to Wrangler's local D1 state,
-builds the browser app, and starts Pages Functions and static assets together.
-Open the URL Wrangler prints, then visit `/admin` and enter the same
+`dev` applies the checked-in migrations to Wrangler's local D1 state, starts
+Vite with hot reload for the browser app, and starts Pages Functions for API
+requests. Open Vite's URL, then visit `/admin` and enter the same
 `ADMIN_KEY` configured in `.dev.vars`. The local D1 state lives under
 `.wrangler/` and is ignored by Git.
 
 Use `npm run d1:migrate:local` by itself after adding a migration while the
 local server is stopped. To start from an empty local database, delete the
-ignored `.wrangler/` directory and run `npm run dev:cloud` again.
+ignored `.wrangler/` directory and run `npm run dev` again.
 
 ## 1. Create the D1 database
 
@@ -43,7 +43,7 @@ Run each checked-in migration against the production database before the first
 cloud release:
 
 ```bash
-npx wrangler d1 migrations apply anki-adventure --remote
+npm run deploy:db
 ```
 
 For a local D1 test database, omit `--remote`.
@@ -79,8 +79,11 @@ the `functions/` directory automatically and uses the `DB` binding from
 `wrangler.toml`.
 
 ```bash
-npx wrangler pages deploy dist --project-name anki-adventure
+npm run deploy:app
 ```
+
+Use `npm run deploy` to apply the production D1 migrations first and deploy
+the Pages app only if that succeeds.
 
 For an existing Pages project, ensure its production environment also has the
 `DB` D1 binding and `ADMIN_KEY` secret configured.
