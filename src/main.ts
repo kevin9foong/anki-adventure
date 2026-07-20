@@ -6,6 +6,9 @@ import { createBattleModeToggle } from './ui/battleMode';
 import { insertStoragePanel } from './ui/menu';
 import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, newCardProgress, nextBattleCard, nextCard, partyIsDefeated, placeCaught, resolveEnemyDamage, restoreParty, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
 import { db, exportBackup, getSave, restoreBackup, saveGame, type SaveState } from './storage/db';
+import { CloudApi, CloudApiError } from './cloud/client';
+import { nextCloudCard, type CloudCardProgress, type CuratedDeckCard } from './cloud/decks';
+import { cloudSaveTokenFromUrl, persistenceMode } from './cloud/mode';
 
 const status = document.querySelector<HTMLSpanElement>('#deck-status')!;
 const battleEl = document.querySelector<HTMLDivElement>('#battle')!;
@@ -15,6 +18,13 @@ let cards: StudyCard[] = [];
 let importStatus: string | undefined;
 let bridge: ReturnType<typeof createGame>;
 let battle: { enemy: Monster; card: StudyCard; answer: boolean; mode: 'fight' | 'catch'; kind: 'wild' | 'trainer' | 'gym'; remainingEnemies: number; message: string; animating: boolean } | undefined;
+const mode = persistenceMode(window.location.href);
+const cloudApi = (() => { const token = cloudSaveTokenFromUrl(window.location.href); return token ? new CloudApi(token) : undefined; })();
+let cloudRevision: number | undefined;
+let selectedCloudDeckIds: string[] = [];
+let cloudReloadRequired = false;
+const cloudCardRefs = new Map<string, { deckId: string; sourceCardId: string }>();
+let pendingCloudGrade: { deckId: string; sourceCardId: string; grade: Grade } | undefined;
 
 const demoDeck: StudyCard[] = [
   { id: 'demo-1', front: '海', back: 'sea', reading: 'うみ', state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
@@ -23,12 +33,78 @@ const demoDeck: StudyCard[] = [
 ];
 
 async function boot() {
-  cards = await db.cards.toArray();
-  if (!cards.length) { await db.cards.bulkPut(demoDeck); cards = demoDeck; }
-  save = await getSave() ?? { id: 'player', party: [initialMonster('tanuki')], storage: [], activeIndex: 0, dailyNewLimit: 10, limitDate: today(), extraNewCardsToday: 0 };
+  configurePersistenceUi();
+  if (cloudApi) {
+    try {
+      const remote = await cloudApi.session();
+      const party = remote.party as Monster[];
+      save = { id: 'player', party, storage: remote.storage as Monster[], activeIndex: Math.max(0, party.findIndex((monster) => monster.id === remote.activeMonsterId)), dailyNewLimit: remote.dailyNewCardLimit ?? 10, limitDate: remote.limitDate ?? today(), extraNewCardsToday: remote.extraNewCardsToday ?? 0 };
+      cloudRevision = remote.revision;
+      await loadCloudDecks();
+    } catch (error) {
+      document.querySelector('#deck-status')!.textContent = error instanceof CloudApiError && error.status === 404 ? 'Cloud save link is invalid or has been rotated.' : 'Cloud save could not be loaded. Check your connection.';
+      return;
+    }
+  } else {
+    cards = await db.cards.toArray();
+    if (!cards.length) { await db.cards.bulkPut(demoDeck); cards = demoDeck; }
+    save = await getSave() ?? { id: 'player', party: [initialMonster('tanuki')], storage: [], activeIndex: 0, dailyNewLimit: 10, limitDate: today(), extraNewCardsToday: 0 };
+  }
   ensureDailyLimit();
-  await saveGame(save); refreshStatus();
+  if (cloudApi) refreshStatus(); else { await persist(); refreshStatus(); }
   bridge = createGame('game', startBattle, healParty, () => startBattle('trainer'), () => startBattle('gym'));
+}
+function configurePersistenceUi() {
+  const cloud = mode === 'cloud';
+  document.querySelector('#persistence-mode')!.textContent = cloud ? 'Persistence: Cloud (online-only)' : 'Persistence: Local (this device; works offline)';
+  document.querySelectorAll<HTMLElement>('[data-local-only]').forEach((element) => { element.hidden = cloud; });
+  document.querySelector<HTMLElement>('#cloud-deck-picker')!.hidden = !cloud;
+  document.querySelector<HTMLElement>('#cloud-notice')!.hidden = !cloud;
+}
+async function loadCloudDecks() {
+  if (!cloudApi) return;
+  const catalogue = await cloudApi.decks();
+  cloudRevision = catalogue.revision;
+  selectedCloudDeckIds = catalogue.selectedDeckIds;
+  cloudCardRefs.clear();
+  cards = catalogue.decks.flatMap((deck) => deck.cards.map((card) => {
+    const id = `${deck.id}:${card.sourceCardId}`;
+    cloudCardRefs.set(id, { deckId: deck.id, sourceCardId: card.sourceCardId });
+    return {
+    id, front: card.front, back: card.back, reading: card.reading, furigana: card.furigana, exampleSentence: card.exampleSentence, exampleSentenceTranslation: card.exampleSentenceTranslation, exampleSentenceFurigana: card.exampleSentenceFurigana,
+    state: (card.progress?.state as StudyCard['state'] | undefined) ?? 'new', dueAt: (card.progress?.dueAt as string | null | undefined) ?? null,
+    introducedOn: (card.progress?.introducedOn as string | null | undefined) ?? null, intervalDays: (card.progress?.intervalDays as number | undefined) ?? 0,
+    stability: card.progress?.stability as number | undefined, difficulty: card.progress?.difficulty as number | undefined,
+    reps: card.progress?.reps as number | undefined, lapses: card.progress?.lapses as number | undefined,
+    learningSteps: card.progress?.learningSteps as number | undefined, lastReviewedAt: card.progress?.lastReviewedAt as string | null | undefined,
+  }; }));
+  const picker = document.querySelector('#cloud-decks')!;
+  picker.innerHTML = catalogue.catalogue.map((deck) => `<label><input type="checkbox" data-cloud-deck="${deck.id}" ${selectedCloudDeckIds.includes(deck.id) ? 'checked' : ''}/> ${deck.displayName} <small>(${deck.cardCount} cards)</small></label>`).join('') || '<p class="hint">No published decks are available yet.</p>';
+  picker.querySelectorAll<HTMLInputElement>('[data-cloud-deck]').forEach((input) => input.addEventListener('change', async () => {
+    if (!cloudApi || cloudRevision === undefined) return;
+    const deckIds = Array.from(picker.querySelectorAll<HTMLInputElement>('[data-cloud-deck]:checked')).map((checkbox) => checkbox.dataset.cloudDeck!);
+    try { cloudRevision = await cloudApi.selectDecks(cloudRevision, deckIds); await loadCloudDecks(); refreshStatus(); }
+    catch (error) { cloudMutationFailure(error); }
+  }));
+}
+function nextCloudStudyCard(candidates = cards) {
+  const curated: CuratedDeckCard[] = candidates.flatMap((card) => {
+    const ref = cloudCardRefs.get(card.id);
+    return ref ? [{ deckId: ref.deckId, sourceCardId: ref.sourceCardId, front: card.front, back: card.back, reading: card.reading, furigana: card.furigana, exampleSentence: card.exampleSentence, exampleSentenceTranslation: card.exampleSentenceTranslation, exampleSentenceFurigana: card.exampleSentenceFurigana }] : [];
+  });
+  const progress: CloudCardProgress[] = candidates.flatMap((card) => {
+    const ref = cloudCardRefs.get(card.id);
+    return ref && card.state !== 'new' ? [{ deckId: ref.deckId, sourceCardId: ref.sourceCardId, state: card.state, dueAt: card.dueAt, introducedOn: card.introducedOn, intervalDays: card.intervalDays, stability: card.stability, difficulty: card.difficulty, reps: card.reps, lapses: card.lapses, learningSteps: card.learningSteps, lastReviewedAt: card.lastReviewedAt }] : [];
+  });
+  return nextCloudCard({ selectedDeckIds: selectedCloudDeckIds, cards: curated, progress, now: new Date(), dailyNewLimit: todayNewLimit() });
+}
+function cloudMutationFailure(error: unknown) {
+  if (error instanceof CloudApiError && error.status === 409) {
+    cloudReloadRequired = true;
+    document.querySelector('#deck-status')!.textContent = 'Cloud save changed elsewhere — reload required.';
+    notice('This cloud save changed elsewhere. Reload this page; your action was not retried.');
+  }
+  else notice('Cloud save failed. Check your connection before continuing.');
 }
 const today = () => studyDayKey(new Date());
 const active = () => save.party[save.activeIndex];
@@ -41,7 +117,7 @@ function renderTodayNewLimit(saved = false) {
 function refreshStatus() {
   if (importStatus) { status.textContent = importStatus; return; }
   const counts = cardCounts(cards, new Date(), todayNewLimit());
-  status.innerHTML = `<span class="deck-summary">${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}</span><span class="card-count new" aria-label="${counts.new} new cards available today">${counts.new}</span><span class="card-count learning" aria-label="${counts.learning} learning cards due">${counts.learning}</span><span class="card-count due" aria-label="${counts.review} review cards due">${counts.review}</span>`;
+  status.innerHTML = `<span class="deck-summary">${mode === 'cloud' ? 'Cloud • ' : 'Local • '}${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}</span><span class="card-count new" aria-label="${counts.new} new cards available today">${counts.new}</span><span class="card-count learning" aria-label="${counts.learning} learning cards due">${counts.learning}</span><span class="card-count due" aria-label="${counts.review} review cards due">${counts.review}</span>`;
 }
 function updateImportStatus(progress: { stage: 'reading' } | { stage: 'cards' | 'media'; completed: number; total: number }) {
   importStatus = progress.stage === 'reading' ? 'Reading deck…' : `Importing ${progress.stage} ${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}…`;
@@ -52,8 +128,9 @@ function ensureDailyLimit() {
 }
 
 function startBattle(kind: 'wild' | 'trainer' | 'gym' = 'wild') {
-  ensureDailyLimit(); const card = nextCard(cards, new Date(), todayNewLimit()); const player = active();
-  if (!card) return notice('No due or allowed new cards. Import a deck or raise today’s new-card limit in the pack.');
+  if (cloudReloadRequired) return notice('Reload is required before continuing cloud play.');
+  ensureDailyLimit(); const card = cloudApi ? nextCloudStudyCard() : nextCard(cards, new Date(), todayNewLimit()); const player = active();
+  if (!card) return notice(mode === 'cloud' ? 'No due or allowed cards. Select a published deck in the Pack or raise today’s new-card limit.' : 'No due or allowed new cards. Import a deck or raise today’s new-card limit in the pack.');
   if (!player || player.currentHp <= 0) return notice('Visit the Health House: no party monster can battle.');
   if (kind === 'gym' && characterLevel(cards) < 8) return notice('Mt. Bizan Gym opens at trainer level 8. Mature cards raise your trainer level.');
   const options: Array<'uzu' | 'mosslug' | 'sparkite'> = ['uzu', 'mosslug', 'sparkite']; const enemy = initialMonster(options[Math.floor(Math.random() * options.length)], encounterLevel(save.party));
@@ -102,11 +179,24 @@ function playBattleAnimation(side: 'player' | 'enemy', speciesId: Monster['speci
 async function resolveTurn(grade: Grade) {
   if (!battle || battle.animating) return;
   battle.animating = true;
-  const now = new Date(); const scheduled = scheduleCard(battle.card, grade, now); await db.cards.put(scheduled); cards = cards.map((card) => card.id === scheduled.id ? scheduled : card); const player = active()!;
+  const now = new Date(); let scheduled: StudyCard;
+  try {
+    if (cloudApi) {
+      const ref = cloudCardRefs.get(battle.card.id);
+      if (!ref || cloudRevision === undefined) throw new Error('Cloud card identity is unavailable.');
+      // The final party/storage result is submitted with this grade by persist(),
+      // so D1 commits one review turn atomically rather than two snapshots.
+      scheduled = scheduleCard(battle.card, grade, now);
+      pendingCloudGrade = { ...ref, grade };
+    } else {
+      scheduled = scheduleCard(battle.card, grade, now); await db.cards.put(scheduled);
+    }
+  } catch (error) { battle.animating = false; cloudMutationFailure(error); return; }
+  cards = cards.map((card) => card.id === scheduled.id ? scheduled : card); const player = active()!;
   if (battle.mode === 'catch') {
     await playBattleAnimation('player', player.species, 'catch');
     if (!battle) return;
-    if (Math.random() < catchChance(grade, battle.enemy.currentHp, maxHp(battle.enemy))) { const caught = { ...battle.enemy, id: crypto.randomUUID(), currentHp: maxHp(battle.enemy) }; const placement = placeCaught(save.party, save.storage, caught); if (placement.placed === 'full') { battle.message = 'Storage is full. The charm shattered!'; battle.answer = false; battle.mode = 'fight'; battle.animating = false; renderBattle(); return; } save.party = placement.party; save.storage = placement.storage; battle.message = `${caught.name} went to your ${placement.placed}!`; await persist(); setTimeout(endBattle, 900); return; }
+    if (Math.random() < catchChance(grade, battle.enemy.currentHp, maxHp(battle.enemy))) { const caught = { ...battle.enemy, id: crypto.randomUUID(), currentHp: maxHp(battle.enemy) }; const placement = placeCaught(save.party, save.storage, caught); if (placement.placed === 'full') { battle.message = 'Storage is full. The charm shattered!'; battle.answer = false; battle.mode = 'fight'; battle.animating = false; await persist(); renderBattle(); return; } save.party = placement.party; save.storage = placement.storage; battle.message = `${caught.name} went to your ${placement.placed}!`; await persist(); setTimeout(endBattle, 900); return; }
     battle.message = 'The wild monster broke free!';
   } else {
     await playBattleAnimation('player', player.species, grade);
@@ -121,12 +211,31 @@ async function resolveTurn(grade: Grade) {
   await playBattleAnimation('enemy', battle.enemy.species, grade);
   if (!battle) return;
   player.currentHp = Math.max(0, player.currentHp - resolveEnemyDamage(basePower(battle.enemy), grade)); battle.answer = false; if (!player.currentHp) { if (partyIsDefeated(save.party)) { await returnToHealthHouse(); return; } battle.message = `${player.name} fainted! Return to the Health House.`; await persist(); renderBattle(); return; }
-  const next = nextBattleCard(cards, scheduled.id, now, todayNewLimit());
+  const next = cloudApi ? nextCloudStudyCard(cards.filter((card) => card.id !== scheduled.id)) : nextBattleCard(cards, scheduled.id, now, todayNewLimit());
   if (!next) { battle.message = 'No more cards are available for this battle.'; await persist(); renderBattle(); setTimeout(endBattle, 1000); return; }
   battle.card = next; battle.animating = false;
   await persist(); renderBattle();
 }
-async function persist() { await saveGame(save); refreshStatus(); }
+async function persist() {
+  if (cloudApi) {
+    if (cloudReloadRequired) throw new Error('Cloud reload required');
+    if (cloudRevision === undefined) return;
+    try {
+      const state = { party: save.party, storage: save.storage, activeMonsterId: active()?.id ?? null, dailyNewCardLimit: save.dailyNewLimit, limitDate: save.limitDate, extraNewCardsToday: save.extraNewCardsToday ?? 0 };
+      if (pendingCloudGrade) {
+        const result = await cloudApi.grade(cloudRevision, pendingCloudGrade.deckId, pendingCloudGrade.sourceCardId, pendingCloudGrade.grade, state);
+        cloudRevision = result.revision;
+        const scheduled = result.card as unknown as StudyCard;
+        cards = cards.map((card) => card.id === scheduled.id ? scheduled : card);
+        pendingCloudGrade = undefined;
+      } else cloudRevision = await cloudApi.playerState(cloudRevision, state);
+    } catch (error) {
+      cloudMutationFailure(error);
+      throw error;
+    }
+  } else await saveGame(save);
+  refreshStatus();
+}
 function endBattle() { battle = undefined; battleEl.hidden = true; refreshStatus(); }
 function notice(message: string) { window.alert(message); }
 async function returnToHealthHouse() { save.party = restoreParty(save.party); await persist(); bridge.returnToHealthHouse(); endBattle(); notice('Your party fainted and returned to the Health House.'); }
