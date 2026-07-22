@@ -2,6 +2,7 @@ import './style.css';
 import './storage.css';
 import { createGame } from './game/createGame';
 import { furiganaHtml } from './ui/furigana';
+import { visibleCardSections } from './ui/cardSections';
 import { createBattleModeToggle } from './ui/battleMode';
 import { insertStoragePanel } from './ui/menu';
 import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, newCardProgress, nextBattleCard, nextCard, partyIsDefeated, placeCaught, resolveEnemyDamage, restoreParty, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
@@ -27,9 +28,9 @@ const cloudCardRefs = new Map<string, { deckId: string; sourceCardId: string }>(
 let pendingCloudGrade: { deckId: string; sourceCardId: string; grade: Grade } | undefined;
 
 const demoDeck: StudyCard[] = [
-  { id: 'demo-1', front: '海', back: 'sea', reading: 'うみ', state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
-  { id: 'demo-2', front: '山', back: 'mountain', reading: 'やま', state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
-  { id: 'demo-3', front: '橋', back: 'bridge', reading: 'はし', state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
+  { id: 'demo-1', content: { prompt: [{ text: '海', emphasis: 'primary' }], answer: [{ text: 'うみ', emphasis: 'supporting' }, { text: 'sea', emphasis: 'supporting' }] }, state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
+  { id: 'demo-2', content: { prompt: [{ text: '山', emphasis: 'primary' }], answer: [{ text: 'やま', emphasis: 'supporting' }, { text: 'mountain', emphasis: 'supporting' }] }, state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
+  { id: 'demo-3', content: { prompt: [{ text: '橋', emphasis: 'primary' }], answer: [{ text: 'はし', emphasis: 'supporting' }, { text: 'bridge', emphasis: 'supporting' }] }, state: 'new', dueAt: null, introducedOn: null, intervalDays: 0 },
 ];
 
 async function boot() {
@@ -119,7 +120,7 @@ function refreshStatus() {
   const counts = cardCounts(cards, new Date(), todayNewLimit());
   status.innerHTML = `<span class="deck-summary">${mode === 'cloud' ? 'Cloud • ' : 'Local • '}${cards.length} cards • Lv ${characterLevel(cards)} trainer • ${active()?.name ?? 'No active monster'}</span><span class="card-count new" aria-label="${counts.new} new cards available today">${counts.new}</span><span class="card-count learning" aria-label="${counts.learning} learning cards due">${counts.learning}</span><span class="card-count due" aria-label="${counts.review} review cards due">${counts.review}</span>`;
 }
-function updateImportStatus(progress: { stage: 'reading' } | { stage: 'cards' | 'media'; completed: number; total: number }) {
+function updateImportStatus(progress: { stage: 'reading' } | { stage: 'cards'; completed: number; total: number }) {
   importStatus = progress.stage === 'reading' ? 'Reading deck…' : `Importing ${progress.stage} ${progress.completed.toLocaleString()} / ${progress.total.toLocaleString()}…`;
   refreshStatus();
 }
@@ -143,10 +144,10 @@ function monsterSprite(monster: Monster, side: 'player' | 'enemy') {
 function renderBattle() {
   if (!battle) return; const player = active(); if (!player) return;
   const enemyMax = maxHp(battle.enemy), playerMax = maxHp(player);
-  const word = furiganaHtml(battle.answer ? battle.card.furigana ?? battle.card.front : battle.card.front);
-  const sentence = battle.card.exampleSentence ? `<p class="example-sentence">${furiganaHtml(battle.answer ? battle.card.exampleSentenceFurigana ?? battle.card.exampleSentence : battle.card.exampleSentence)}${battle.answer && battle.card.exampleSentenceTranslation ? `<small>${furiganaHtml(battle.card.exampleSentenceTranslation)}</small>` : ''}</p>` : '';
-  const answer = battle.answer ? `<span>${furiganaHtml(battle.card.back)}</span><small>${furiganaHtml(battle.card.reading ?? '')}</small>` : '';
-  battleEl.innerHTML = `<div class="battle-top"><div class="monster-card enemy"><b>Lv${battle.enemy.level} ${battle.enemy.name}</b><meter min="0" max="${enemyMax}" value="${battle.enemy.currentHp}"></meter><span>${battle.enemy.currentHp}/${enemyMax} HP</span></div>${monsterSprite(battle.enemy, 'enemy')}</div><div class="battle-bottom">${monsterSprite(player, 'player')}<div class="monster-card"><b>Lv${player.level} ${player.name}</b><meter min="0" max="${playerMax}" value="${player.currentHp}"></meter><span>${player.currentHp}/${playerMax} HP</span></div></div><section class="review"><p class="message">${battle.message}</p><div class="prompt"><strong>${word}</strong>${answer}${sentence}</div>${battle.answer ? `<div class="grades"><button data-grade="again" ${battle.animating ? 'disabled' : ''}>Again<br/><small>0.3×</small></button><button data-grade="hard" ${battle.animating ? 'disabled' : ''}>Hard<br/><small>0.5× · 0.7× hit</small></button><button data-grade="good" ${battle.animating ? 'disabled' : ''}>Good<br/><small>1.0× · Guard</small></button><button data-grade="easy" ${battle.animating ? 'disabled' : ''}>Easy<br/><small>1.5× · Guard</small></button></div>` : `<button id="show-answer" class="show" ${battle.animating ? 'disabled' : ''}>Show answer</button>`}</section><button id="run" class="run">Leave battle</button>`;
+  const content = battle.card.content;
+  if (!content) throw new Error('A card without generic section content cannot be rendered. Re-import the deck.');
+  const sections = visibleCardSections(content, battle.answer).map((section) => `<p class="card-section card-section-${section.emphasis}">${furiganaHtml(section.text)}</p>`).join('');
+  battleEl.innerHTML = `<div class="battle-top"><div class="monster-card enemy"><b>Lv${battle.enemy.level} ${battle.enemy.name}</b><meter min="0" max="${enemyMax}" value="${battle.enemy.currentHp}"></meter><span>${battle.enemy.currentHp}/${enemyMax} HP</span></div>${monsterSprite(battle.enemy, 'enemy')}</div><div class="battle-bottom">${monsterSprite(player, 'player')}<div class="monster-card"><b>Lv${player.level} ${player.name}</b><meter min="0" max="${playerMax}" value="${player.currentHp}"></meter><span>${player.currentHp}/${playerMax} HP</span></div></div><section class="review"><p class="message">${battle.message}</p><div class="prompt">${sections}</div>${battle.answer ? `<div class="grades"><button data-grade="again" ${battle.animating ? 'disabled' : ''}>Again<br/><small>0.3×</small></button><button data-grade="hard" ${battle.animating ? 'disabled' : ''}>Hard<br/><small>0.5× · 0.7× hit</small></button><button data-grade="good" ${battle.animating ? 'disabled' : ''}>Good<br/><small>1.0× · Guard</small></button><button data-grade="easy" ${battle.animating ? 'disabled' : ''}>Easy<br/><small>1.5× · Guard</small></button></div>` : `<button id="show-answer" class="show" ${battle.animating ? 'disabled' : ''}>Show answer</button>`}</section><button id="run" class="run">Leave battle</button>`;
   battleEl.querySelector('#show-answer')?.addEventListener('click', () => { if (battle && !battle.animating) { battle.answer = true; battle.message = battle.mode === 'catch' ? 'Choose a grade to cast your catch charm.' : 'How well did you remember it?'; renderBattle(); } });
   battleEl.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach((button) => button.addEventListener('click', () => resolveTurn(button.dataset.grade as Grade)));
   if (battle.answer && battle.kind === 'wild') {
@@ -252,7 +253,7 @@ function renderStoragePanel() {
 document.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((button) => button.addEventListener('pointerdown', (event) => { event.preventDefault(); const [x, y] = button.dataset.move!.split(',').map(Number); bridge.move(x, y); }));
 document.querySelector('#action-button')!.addEventListener('click', () => bridge.interact());
 document.querySelector('#menu-button')!.addEventListener('click', () => { ensureDailyLimit(); document.querySelector<HTMLInputElement>('#new-limit')!.value = String(save.dailyNewLimit); renderTodayNewLimit(); document.querySelector('#party-summary')!.textContent = `Party: ${save.party.map((m) => `${m.name} Lv${m.level}`).join(', ')}. Storage: ${save.storage.length}/100.`; renderStoragePanel(); menu.showModal(); });
-document.querySelector<HTMLInputElement>('#deck-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; importStatus = 'Loading import tools…'; refreshStatus(); try { const { importDeck } = await import('./storage/importer'); const count = await importDeck(file, { onProgress: updateImportStatus }); cards = await db.cards.toArray(); importStatus = undefined; refreshStatus(); notice(`Imported ${count} cards. Media is stored locally and read only when needed.`); } catch (error) { importStatus = undefined; notice(`Import failed: ${error instanceof Error ? error.message : 'unknown error'}`); refreshStatus(); } });
+document.querySelector<HTMLInputElement>('#deck-input')!.addEventListener('change', async (event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return; importStatus = 'Loading import tools…'; refreshStatus(); try { const { importDeck } = await import('./storage/importer'); const count = await importDeck(file, { onProgress: updateImportStatus }); cards = await db.cards.toArray(); importStatus = undefined; refreshStatus(); notice(`Imported ${count} cards.`); } catch (error) { importStatus = undefined; notice(`Import failed: ${error instanceof Error ? error.message : 'unknown error'}`); refreshStatus(); } });
 document.querySelector('#save-limit')!.addEventListener('click', async () => {
   save.dailyNewLimit = Math.max(0, Number(document.querySelector<HTMLInputElement>('#new-limit')!.value) || 0);
   await persist();

@@ -10,6 +10,10 @@
 .new-card-stats p { margin:0; }
 .example-sentence { margin:7px 0 0; font-size:17px; line-height:1.35; }
 .example-sentence small { display:block; margin-top:3px; }
+.card-section { margin:7px 0 0; line-height:1.35; }
+.card-section-primary { margin-top:0; font-size:32px; line-height:1.1; }
+.card-section-supporting { font-size:20px; }
+.card-section-detail { font-size:13px; }
 
 /* Keep the enemy's status card immediately beside its sprite. */
 .battle-top { justify-content:flex-end; gap:20px; }

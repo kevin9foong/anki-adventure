@@ -4,6 +4,20 @@ export type Grade = 'again' | 'hard' | 'good' | 'easy';
 /** The four states used by Anki's v3 scheduler. */
 export type CardState = 'new' | 'learning' | 'review' | 'relearning';
 
+export type CardSectionEmphasis = 'primary' | 'supporting' | 'detail';
+
+/** An ordered, presentation-neutral part of a review card. */
+export interface CardSection {
+  text: string;
+  emphasis: CardSectionEmphasis;
+}
+
+/** Ordered sections shown before and after a learner reveals a review answer. */
+export interface StudyCardContent {
+  prompt: CardSection[];
+  answer: CardSection[];
+}
+
 // Anki's default learn-ahead window. The red counter includes cards that will
 // become available in this window, even if they are not answerable quite yet.
 export const ANKI_LEARN_AHEAD_MINUTES = 20;
@@ -13,14 +27,16 @@ export interface StudyCard {
   id: string;
   /** Stable source-deck position used when introducing unseen cards. */
   newPosition?: number;
-  front: string;
-  back: string;
+  /** Generic app content; import adapters decide how source fields populate it. */
+  content?: StudyCardContent;
+  /** Legacy flat content retained for previously imported cards. */
+  front?: string;
+  back?: string;
   reading?: string;
   furigana?: string;
   exampleSentence?: string;
   exampleSentenceTranslation?: string;
   exampleSentenceFurigana?: string;
-  media?: string[];
   state: CardState;
   dueAt: string | null;
   introducedOn: string | null;

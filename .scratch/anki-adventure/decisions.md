@@ -72,3 +72,10 @@
 - **Decision:** Both local and curated APKG imports use one Unicode-preserving resolver for semantic fields, with localized aliases and numbered example-sentence fields.
 - **Rationale:** Note-type field labels are user-facing and commonly localized; matching semantic concepts such as pattern, meaning, and example rather than a source deck's schema preserves Kaishi support while importing grammar decks.
 - **Trade-off:** An unfamiliar semantic label still requires a deliberate alias addition; guessing from field order remains limited to collections without model metadata.
+
+## 2026-07-22 — The game renders generic card sections, not deck fields
+
+- **Decision:** A study card exposes ordered `prompt` and `answer` text sections. Import-only deck profiles map source fields into those sections; JLab is the first profile.
+- **Rationale:** The battle UI and scheduling model remain independent of Anki note types, while a new deck requires only a mapping adapter rather than UI or domain changes.
+- **Trade-off:** Existing flat card fields remain as a compatibility fallback until local and cloud records are migrated to required generic content.
+- **Verification gap:** No Figma/design source, Storybook, or agent-browser visual gate is available; the UI change is checked through unit tests and the production build.

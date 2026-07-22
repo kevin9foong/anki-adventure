@@ -82,7 +82,7 @@ Open the **☰ pack** menu to import CSV or Anki `.apkg` files.
 - Matching card IDs are added or replaced. Use a fresh browser profile for a clean game.
 - **Export backup** downloads cards and the player save as JSON; **Restore backup** imports it on the same device.
 
-Game data, imported media, and scheduling state live in this browser's IndexedDB. Browser storage can be cleared, so keep backups—especially on iOS.
+Cards, saves, and scheduling state live in this browser's IndexedDB. APKG media files are not imported. Browser storage can be cleared, so keep backups—especially on iOS.
 
 ## Architecture
 

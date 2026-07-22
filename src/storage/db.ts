@@ -13,16 +13,14 @@ export interface SaveState {
   /** Anki's "Increase today's new card limit" is temporary. */
   extraNewCardsToday?: number;
 }
-export interface MediaRecord { id: string; blob: Blob; }
-
 class AdventureDb extends Dexie {
   cards!: Table<StudyCard, string>;
   saves!: Table<SaveState, string>;
-  media!: Table<MediaRecord, string>;
   constructor() {
     super('anki-adventure');
     this.version(1).stores({ cards: 'id, state, dueAt, introducedOn', saves: 'id', media: 'id' });
     this.version(2).stores({ cards: 'id, state, dueAt, introducedOn, newPosition', saves: 'id', media: 'id' });
+    this.version(3).stores({ cards: 'id, state, dueAt, introducedOn, newPosition', saves: 'id', media: null });
   }
 }
 export const db = new AdventureDb();
