@@ -3,8 +3,8 @@ import { InvalidCuratedDeckError, nextCloudCard, parseCuratedCsv, queueCloudCard
 
 describe('curated deck publishing', () => {
   it('normalizes recognized CSV fields while retaining the publisher supplied stable IDs', () => {
-    expect(parseCuratedCsv('id,Word,Meaning,Reading\nlesson-01,猫,cat,ねこ')).toEqual([
-      { sourceCardId: 'lesson-01', front: '猫', back: 'cat', reading: 'ねこ' },
+    expect(parseCuratedCsv('id,Word,Meaning,Reading\nlesson-01,猫,cat,ねこ')).toMatchObject([
+      { sourceCardId: 'lesson-01', profile: 'simple', fields: { front: '猫', back: 'cat', reading: 'ねこ' } },
     ]);
   });
 

@@ -1,5 +1,5 @@
 import { adminId, deckCards, isHttpResponse, validLabel } from '../../_lib/admin';
-import { isAdmin, json, type CloudEnv, type FunctionContext, unauthorized } from '../../_lib/cloud';
+import { batchD1Statements, isAdmin, json, type CloudEnv, type FunctionContext, unauthorized } from '../../_lib/cloud';
 import { requestJson } from '../../_lib/session';
 
 export async function onRequest(context: FunctionContext<CloudEnv>): Promise<Response> {
@@ -21,9 +21,13 @@ async function create(context: FunctionContext<CloudEnv>) {
   const cards = deckCards(body.cards); if (isHttpResponse(cards)) return cards;
   const id = crypto.randomUUID(); const now = new Date().toISOString();
   const statements = [context.env.DB.prepare('INSERT INTO curated_decks (id, display_name, published_at) VALUES (?, ?, ?)').bind(id, displayName, now),
-    ...cards.map((card, index) => context.env.DB.prepare(`INSERT INTO deck_cards (deck_id, source_card_id, new_position, front, back, reading, furigana, example, example_translation, example_furigana)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, card.sourceCardId, card.newPosition ?? index, card.front, card.back, card.reading ?? null, card.furigana ?? null, card.exampleSentence ?? null, card.exampleSentenceTranslation ?? null, card.exampleSentenceFurigana ?? null))];
-  await context.env.DB.batch(statements);
+    ...cards.flatMap((card, index) => [
+      context.env.DB.prepare(`INSERT INTO deck_cards (deck_id, source_card_id, new_position, profile)
+        VALUES (?, ?, ?, ?)`).bind(id, card.sourceCardId, card.newPosition ?? index, card.profile),
+      ...Object.entries(card.fields ?? {}).map(([name, value]) => context.env.DB.prepare(`INSERT INTO deck_card_fields
+        (deck_id, source_card_id, field_name, field_value) VALUES (?, ?, ?, ?)`).bind(id, card.sourceCardId, name, value)),
+    ])];
+  await batchD1Statements(context.env.DB, statements);
   return json({ deck: { id, displayName, publishedAt: now, cardCount: cards.length } }, { status: 201 });
 }
 

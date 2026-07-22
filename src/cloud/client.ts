@@ -11,8 +11,10 @@ export interface CloudSession {
 
 export interface CloudDeckCard {
   sourceCardId: string;
-  front: string;
-  back: string;
+  newPosition: number;
+  content: StudyCardContent;
+  front?: string;
+  back?: string;
   reading?: string;
   furigana?: string;
   exampleSentence?: string;
@@ -71,3 +73,4 @@ export class CloudApi {
     return this.fetcher(path, { ...init, headers: { Authorization: `Bearer ${this.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } });
   }
 }
+import type { StudyCardContent } from '../domain/game';

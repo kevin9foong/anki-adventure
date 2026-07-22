@@ -10,6 +10,14 @@ export interface D1Database {
   batch<T = unknown>(statements: D1PreparedStatement[]): Promise<T[]>;
 }
 
+/** Cloudflare D1 accepts at most 100 statements in one batch. */
+export async function batchD1Statements(database: D1Database, statements: D1PreparedStatement[]): Promise<void> {
+  const maxStatements = 100;
+  for (let start = 0; start < statements.length; start += maxStatements) {
+    await database.batch(statements.slice(start, start + maxStatements));
+  }
+}
+
 export interface CloudEnv {
   ADMIN_KEY: string;
   DB: D1Database;

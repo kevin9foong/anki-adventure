@@ -27,14 +27,17 @@ CREATE TABLE IF NOT EXISTS deck_cards (
   deck_id TEXT NOT NULL REFERENCES curated_decks(id) ON DELETE CASCADE,
   source_card_id TEXT NOT NULL,
   new_position INTEGER NOT NULL,
-  front TEXT NOT NULL,
-  back TEXT NOT NULL,
-  reading TEXT,
-  furigana TEXT,
-  example TEXT,
-  example_translation TEXT,
-  example_furigana TEXT,
+  profile TEXT NOT NULL,
   PRIMARY KEY (deck_id, source_card_id)
+);
+
+CREATE TABLE IF NOT EXISTS deck_card_fields (
+  deck_id TEXT NOT NULL,
+  source_card_id TEXT NOT NULL,
+  field_name TEXT NOT NULL,
+  field_value TEXT NOT NULL,
+  PRIMARY KEY (deck_id, source_card_id, field_name),
+  FOREIGN KEY (deck_id, source_card_id) REFERENCES deck_cards(deck_id, source_card_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS save_selected_decks (

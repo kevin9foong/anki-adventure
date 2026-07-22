@@ -4,7 +4,6 @@ import { authenticatedSave, conflict, expectedRevision, isResponse, requestJson 
 import { validPlayerState } from './player-state';
 
 interface GradeRow {
-  front: string; back: string; reading: string | null; furigana: string | null;
   state: StudyCard['state'] | null; due_at: string | null; introduced_on: string | null; interval_days: number | null;
   stability: number | null; difficulty: number | null; reps: number | null; lapses: number | null; learning_steps: number | null; last_reviewed_at: string | null;
 }
@@ -21,14 +20,14 @@ export async function onRequest(context: FunctionContext<CloudEnv>): Promise<Res
   if (!body.playerState || typeof body.playerState !== 'object' || Array.isArray(body.playerState) || !validPlayerState(body.playerState as Record<string, unknown>)) return json({ error: 'invalid_player_state' }, { status: 400 });
   const playerState = body.playerState as Record<string, unknown>;
 
-  const row = await context.env.DB.prepare(`SELECT c.front, c.back, c.reading, c.furigana, p.state, p.due_at, p.introduced_on,
+  const row = await context.env.DB.prepare(`SELECT p.state, p.due_at, p.introduced_on,
     p.interval_days, p.stability, p.difficulty, p.reps, p.lapses, p.learning_steps, p.last_reviewed_at
     FROM deck_cards c JOIN save_selected_decks selected ON selected.deck_id = c.deck_id
     LEFT JOIN cloud_card_progress p ON p.save_id = selected.save_id AND p.deck_id = c.deck_id AND p.source_card_id = c.source_card_id
     WHERE selected.save_id = ? AND c.deck_id = ? AND c.source_card_id = ?`).bind(save.id, body.deckId, body.sourceCardId).first<GradeRow>();
   if (!row) return json({ error: 'card_not_found' }, { status: 404 });
   const card: StudyCard = {
-    id: `${body.deckId}:${body.sourceCardId}`, front: row.front, back: row.back, reading: row.reading ?? undefined, furigana: row.furigana ?? undefined,
+    id: `${body.deckId}:${body.sourceCardId}`,
     state: row.state ?? 'new', dueAt: row.due_at, introducedOn: row.introduced_on, intervalDays: row.interval_days ?? 0,
     stability: row.stability ?? undefined, difficulty: row.difficulty ?? undefined, reps: row.reps ?? undefined,
     lapses: row.lapses ?? undefined, learningSteps: row.learning_steps ?? undefined, lastReviewedAt: row.last_reviewed_at,

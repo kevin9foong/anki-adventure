@@ -20,6 +20,10 @@ export function deckCards(value: unknown): AdminDeckCard[] | Response {
   try {
     return validateCuratedCards(value.map((card) => ({
       sourceCardId: typeof card?.sourceCardId === 'string' ? card.sourceCardId : '',
+      newPosition: typeof card?.newPosition === 'number' ? card.newPosition : undefined,
+      profile: typeof card?.profile === 'string' ? card.profile as never : undefined,
+      fields: card?.fields && typeof card.fields === 'object' && !Array.isArray(card.fields)
+        ? Object.fromEntries(Object.entries(card.fields).filter(([, value]) => typeof value === 'string')) as Record<string, string> : undefined,
       front: typeof card?.front === 'string' ? card.front : '',
       back: typeof card?.back === 'string' ? card.back : '',
       reading: typeof card?.reading === 'string' ? card.reading : undefined,

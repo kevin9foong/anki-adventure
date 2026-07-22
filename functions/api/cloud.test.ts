@@ -140,7 +140,27 @@ describe('admin deck lifecycle endpoints', () => {
     const published = await deckAdmin({ request: new Request('https://anki.example/api/admin/decks/deck-1', { method: 'PATCH', headers, body: JSON.stringify({ displayName: 'Core', confirmDestructive: true, cards: [{ sourceCardId: 'new', front: '猫', back: 'cat', reading: 'ねこ', furigana: '猫[ねこ]', exampleSentence: '猫です。', exampleSentenceTranslation: 'It is a cat.' }] }) }), env: { ADMIN_KEY: 'correct-key', DB: db } } as never);
     expect(published.status).toBe(200);
     expect(writes.some(({ query }) => query.includes('DELETE FROM cloud_card_progress'))).toBe(true);
-    expect(writes.some(({ values }) => values.includes('猫です。'))).toBe(true);
+    expect(writes.some(({ values }) => values.some((value) => String(value).includes('猫です。')))).toBe(true);
+  });
+
+  it('publishes large decks in D1-safe batches', async () => {
+    const batches: number[] = [];
+    const db = {
+      prepare() { return { bind() { return { async first() { return null; }, async all() { return { results: [] }; }, async run() { return { meta: { changes: 1 } }; } }; } }; },
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { batches.push(statements.length); return Promise.all(statements.map((statement) => statement.run())); },
+    };
+    const cards = Array.from({ length: 201 }, (_, index) => ({ sourceCardId: `card-${index}`, front: `Front ${index}`, back: `Back ${index}` }));
+    const response = await decksAdmin({
+      request: new Request('https://anki.example/api/admin/decks', {
+        method: 'POST',
+        headers: { 'X-Admin-Key': 'correct-key', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: 'Large deck', cards }),
+      }),
+      env: { ADMIN_KEY: 'correct-key', DB: db },
+    } as never);
+
+    expect(response.status).toBe(201);
+    expect(batches).toEqual([100, 100, 100, 100, 100, 100, 4]);
   });
 });
 

@@ -1,11 +1,15 @@
+import { cardContent, type DeckProfileId } from '../deckMapper';
 import { ANKI_LEARN_AHEAD_MINUTES, nextStudyDayAt, studyDayKey, type CardState, type StudyCard } from '../domain/game';
 
 export interface CuratedCardInput {
   sourceCardId: string;
   /** Zero-based source-deck position. The publisher's input sequence is used when omitted. */
   newPosition?: number;
-  front: string;
-  back: string;
+  profile?: DeckProfileId;
+  fields?: Record<string, string>;
+  /** Transitional publisher input only; never persisted in D1. */
+  front?: string;
+  back?: string;
   reading?: string;
   furigana?: string;
   exampleSentence?: string;
@@ -31,7 +35,7 @@ export interface CloudCardProgress {
   lastReviewedAt?: string | null;
 }
 
-export interface CloudQueueCard extends CuratedDeckCard, StudyCard {}
+export type CloudQueueCard = CuratedDeckCard & Omit<StudyCard, 'front' | 'back'>;
 
 export interface CloudQueueInput {
   selectedDeckIds: readonly string[];
@@ -44,7 +48,7 @@ export interface CloudQueueInput {
 
 export class InvalidCuratedDeckError extends Error {}
 
-type CuratedTextField = Exclude<keyof CuratedCardInput, 'sourceCardId' | 'newPosition'>;
+type CuratedTextField = 'front' | 'back' | 'reading' | 'furigana' | 'exampleSentence' | 'exampleSentenceTranslation' | 'exampleSentenceFurigana';
 const aliases: Record<CuratedTextField, string[]> = {
   front: ['front', 'word', 'expression', 'vocabulary', 'vocab', 'japanese', 'term'],
   back: ['back', 'wordmeaning', 'meaning', 'definition', 'translation', 'english', 'englishmeaning'],
@@ -71,11 +75,11 @@ export function parseCuratedCsv(text: string): CuratedCardInput[] {
   if (frontIndex === -1 || backIndex === -1) throw new InvalidCuratedDeckError('A curated CSV requires recognized front and back fields.');
   const optional = Object.fromEntries((Object.keys(aliases) as Array<keyof typeof aliases>).map((field) => [field, fieldIndex(field)])) as Record<keyof typeof aliases, number>;
   return validateCuratedCards(rows.slice(1).filter((row) => row.some((value) => value.trim())).map((row) => {
-    const card: CuratedCardInput = { sourceCardId: row[idIndex] ?? '', front: row[frontIndex] ?? '', back: row[backIndex] ?? '' };
+    const card: CuratedCardInput = { sourceCardId: row[idIndex] ?? '', profile: 'simple', fields: { front: row[frontIndex] ?? '', back: row[backIndex] ?? '' } };
     for (const field of Object.keys(aliases) as Array<keyof typeof aliases>) {
       if (field === 'front' || field === 'back') continue;
       const value = optional[field] === -1 ? '' : row[optional[field]] ?? '';
-      if (strip(value)) card[field] = strip(value);
+      if (strip(value)) card.fields![field] = strip(value);
     }
     return card;
   }));
@@ -89,16 +93,19 @@ export function validateCuratedCards(cards: CuratedCardInput[]): CuratedCardInpu
     if (!sourceCardId) throw new InvalidCuratedDeckError('Every curated card requires a stable source card ID.');
     if (seen.has(sourceCardId)) throw new InvalidCuratedDeckError(`Duplicate source card ID: ${sourceCardId}`);
     seen.add(sourceCardId);
-    const normalized = {
-      ...card, sourceCardId, ...(card.newPosition === undefined ? {} : { newPosition: card.newPosition }), front: strip(card.front), back: strip(card.back),
-      reading: optionalText(card.reading), furigana: optionalText(card.furigana),
-      exampleSentence: optionalText(card.exampleSentence), exampleSentenceTranslation: optionalText(card.exampleSentenceTranslation),
-      exampleSentenceFurigana: optionalText(card.exampleSentenceFurigana),
-    };
-    if (!normalized.front || !normalized.back) throw new InvalidCuratedDeckError(`Card ${sourceCardId} requires front and back text.`);
+    const profile = card.profile ?? 'simple';
+    if (!['simple', 'jlab', 'kaishi'].includes(profile)) throw new InvalidCuratedDeckError(`Card ${sourceCardId} has an invalid profile.`);
+    const fields = Object.fromEntries(Object.entries(card.fields ?? {
+      front: card.front ?? '', back: card.back ?? '', reading: card.reading ?? '', furigana: card.furigana ?? '',
+      exampleSentence: card.exampleSentence ?? '', exampleSentenceTranslation: card.exampleSentenceTranslation ?? '', exampleSentenceFurigana: card.exampleSentenceFurigana ?? '',
+    }).filter(([name, value]) => typeof name === 'string' && typeof value === 'string').map(([name, value]) => [name, strip(value)]).filter(([, value]) => Boolean(value)));
+    const content = cardContent(profile, fields);
+    if (!content.prompt.length || !content.answer.length) throw new InvalidCuratedDeckError(`Card ${sourceCardId} has no renderable prompt and answer.`);
+    const normalized = { sourceCardId, ...(card.newPosition === undefined ? {} : { newPosition: card.newPosition }), profile, fields };
     return normalized;
   });
 }
+
 
 /**
  * Materializes the selected queue only. Missing progress is intentionally a
@@ -111,6 +118,7 @@ export function queueCloudCards(input: CloudQueueInput): CloudQueueCard[] {
     const saved = progress.get(progressKey(card.deckId, card.sourceCardId));
     return {
       ...card,
+      content: cardContent(card.profile ?? 'simple', card.fields ?? {}),
       id: cloudCardId(card.deckId, card.sourceCardId),
       state: saved?.state ?? 'new', dueAt: saved?.dueAt ?? null,
       introducedOn: saved?.introducedOn ?? null, intervalDays: saved?.intervalDays ?? 0,
@@ -153,7 +161,6 @@ function chooseAcrossDecks(cards: CloudQueueCard[], random: () => number) {
 /** A UI/scheduler ID; persistence identity remains the two explicit fields. */
 export const cloudCardId = (deckId: string, sourceCardId: string) => `${encodeURIComponent(deckId)}:${encodeURIComponent(sourceCardId)}`;
 const progressKey = (deckId: string, sourceCardId: string) => `${deckId}\u0000${sourceCardId}`;
-const optionalText = (value: string | undefined) => value === undefined ? undefined : strip(value) || undefined;
 
 function parseCsvRows(text: string) {
   const rows: string[][] = [];

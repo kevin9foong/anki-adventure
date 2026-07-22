@@ -8,6 +8,7 @@ import { insertStoragePanel } from './ui/menu';
 import { basePower, cardCounts, catchChance, characterLevel, damageForGrade, effectiveNewCardLimit, encounterLevel, initialMonster, maxHp, newCardProgress, nextBattleCard, nextCard, partyIsDefeated, placeCaught, resolveEnemyDamage, restoreParty, rollDailyNewLimit, scheduleCard, species, studyDayKey, type Grade, type Monster, type StudyCard, grantXp } from './domain/game';
 import { db, exportBackup, getSave, restoreBackup, saveGame, type SaveState } from './storage/db';
 import { CloudApi, CloudApiError } from './cloud/client';
+import { cloudStudyCard } from './cloud/studyCard';
 import { nextCloudCard, type CloudCardProgress, type CuratedDeckCard } from './cloud/decks';
 import { cloudSaveTokenFromUrl, persistenceMode } from './cloud/mode';
 
@@ -71,14 +72,8 @@ async function loadCloudDecks() {
   cards = catalogue.decks.flatMap((deck) => deck.cards.map((card) => {
     const id = `${deck.id}:${card.sourceCardId}`;
     cloudCardRefs.set(id, { deckId: deck.id, sourceCardId: card.sourceCardId });
-    return {
-    id, front: card.front, back: card.back, reading: card.reading, furigana: card.furigana, exampleSentence: card.exampleSentence, exampleSentenceTranslation: card.exampleSentenceTranslation, exampleSentenceFurigana: card.exampleSentenceFurigana,
-    state: (card.progress?.state as StudyCard['state'] | undefined) ?? 'new', dueAt: (card.progress?.dueAt as string | null | undefined) ?? null,
-    introducedOn: (card.progress?.introducedOn as string | null | undefined) ?? null, intervalDays: (card.progress?.intervalDays as number | undefined) ?? 0,
-    stability: card.progress?.stability as number | undefined, difficulty: card.progress?.difficulty as number | undefined,
-    reps: card.progress?.reps as number | undefined, lapses: card.progress?.lapses as number | undefined,
-    learningSteps: card.progress?.learningSteps as number | undefined, lastReviewedAt: card.progress?.lastReviewedAt as string | null | undefined,
-  }; }));
+    return cloudStudyCard(id, { ...card, content: card.content ?? cloudCardContent(card) });
+  }));
   const picker = document.querySelector('#cloud-decks')!;
   picker.innerHTML = catalogue.catalogue.map((deck) => `<label><input type="checkbox" data-cloud-deck="${deck.id}" ${selectedCloudDeckIds.includes(deck.id) ? 'checked' : ''}/> ${deck.displayName} <small>(${deck.cardCount} cards)</small></label>`).join('') || '<p class="hint">No published decks are available yet.</p>';
   picker.querySelectorAll<HTMLInputElement>('[data-cloud-deck]').forEach((input) => input.addEventListener('change', async () => {
@@ -88,16 +83,35 @@ async function loadCloudDecks() {
     catch (error) { cloudMutationFailure(error); }
   }));
 }
+function cloudCardContent(card: Pick<CuratedDeckCard, 'reading' | 'furigana' | 'exampleSentence' | 'exampleSentenceTranslation' | 'exampleSentenceFurigana'> & { front?: string; back?: string }): StudyCard['content'] {
+  const furigana = card.furigana?.trim() ?? '';
+  const reading = card.reading?.trim() ?? '';
+  const readingIsShown = Boolean(reading && (furigana === reading || furigana.includes(`[${reading}]`)));
+  return {
+    prompt: [{ text: card.front ?? '', emphasis: 'primary' as const }],
+    answer: [
+      { text: furigana, emphasis: 'supporting' as const },
+      { text: card.back ?? '', emphasis: 'supporting' as const },
+      { text: readingIsShown ? '' : reading, emphasis: 'supporting' as const },
+      { text: card.exampleSentenceFurigana ?? card.exampleSentence ?? '', emphasis: 'detail' as const },
+      { text: card.exampleSentenceTranslation ?? '', emphasis: 'detail' as const },
+    ].filter((section) => Boolean(section.text)),
+  };
+}
 function nextCloudStudyCard(candidates = cards) {
   const curated: CuratedDeckCard[] = candidates.flatMap((card) => {
     const ref = cloudCardRefs.get(card.id);
-    return ref ? [{ deckId: ref.deckId, sourceCardId: ref.sourceCardId, front: card.front, back: card.back, reading: card.reading, furigana: card.furigana, exampleSentence: card.exampleSentence, exampleSentenceTranslation: card.exampleSentenceTranslation, exampleSentenceFurigana: card.exampleSentenceFurigana }] : [];
+    return ref ? [{ deckId: ref.deckId, sourceCardId: ref.sourceCardId, newPosition: card.newPosition, front: card.front ?? '', back: card.back ?? '', reading: card.reading, furigana: card.furigana, exampleSentence: card.exampleSentence, exampleSentenceTranslation: card.exampleSentenceTranslation, exampleSentenceFurigana: card.exampleSentenceFurigana }] : [];
   });
   const progress: CloudCardProgress[] = candidates.flatMap((card) => {
     const ref = cloudCardRefs.get(card.id);
     return ref && card.state !== 'new' ? [{ deckId: ref.deckId, sourceCardId: ref.sourceCardId, state: card.state, dueAt: card.dueAt, introducedOn: card.introducedOn, intervalDays: card.intervalDays, stability: card.stability, difficulty: card.difficulty, reps: card.reps, lapses: card.lapses, learningSteps: card.learningSteps, lastReviewedAt: card.lastReviewedAt }] : [];
   });
-  return nextCloudCard({ selectedDeckIds: selectedCloudDeckIds, cards: curated, progress, now: new Date(), dailyNewLimit: todayNewLimit() });
+  const selected = nextCloudCard({ selectedDeckIds: selectedCloudDeckIds, cards: curated, progress, now: new Date(), dailyNewLimit: todayNewLimit() });
+  return selected && candidates.find((card) => {
+    const ref = cloudCardRefs.get(card.id);
+    return ref?.deckId === selected.deckId && ref.sourceCardId === selected.sourceCardId;
+  });
 }
 function cloudMutationFailure(error: unknown) {
   if (error instanceof CloudApiError && error.status === 409) {
@@ -227,7 +241,9 @@ async function persist() {
         const result = await cloudApi.grade(cloudRevision, pendingCloudGrade.deckId, pendingCloudGrade.sourceCardId, pendingCloudGrade.grade, state);
         cloudRevision = result.revision;
         const scheduled = result.card as unknown as StudyCard;
-        cards = cards.map((card) => card.id === scheduled.id ? scheduled : card);
+        // D1 owns scheduling state. The shared card materializer owns content,
+        // so a cloud grade must never replace profile-derived sections.
+        cards = cards.map((card) => card.id === scheduled.id ? { ...card, ...scheduled, content: card.content } : card);
         pendingCloudGrade = undefined;
       } else cloudRevision = await cloudApi.playerState(cloudRevision, state);
     } catch (error) {

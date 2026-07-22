@@ -9,7 +9,22 @@ describe('curated APKG parsing', () => {
 
     await expect(parseCuratedApkg(await file.arrayBuffer())).resolves.toEqual([
       expect.objectContaining({
-        sourceCardId: '1', front: '〜ことにする', back: 'to decide to do', exampleSentence: '〜ことにする。',
+        sourceCardId: '1', profile: 'simple', fields: expect.objectContaining({ front: '〜ことにする', back: 'to decide to do', exampleSentence: '〜ことにする。' }),
+      }),
+    ]);
+  });
+
+  it('extracts JLAB’s named prompt, reading, and notes for cloud publication', async () => {
+    const file = await anki21File(
+      ['Version', 'Sequence', 'Source', 'RemarksFront', 'Jlab-Kanji', 'Other-Front', 'RemarksBack'],
+      ['14', '1', 'source', 'Read this sentence aloud.', 'そして僕は彼女の息子に会った', 'そして 僕[ぼく] は 彼女[かのじょ] の 息子[むすこ] に 会[あ]った', 'And as for me, I met her son.'],
+    );
+
+    await expect(parseCuratedApkg(await file.arrayBuffer())).resolves.toEqual([
+      expect.objectContaining({
+        sourceCardId: '1',
+        profile: 'jlab',
+        fields: expect.objectContaining({ 'Jlab-Kanji': 'そして僕は彼女の息子に会った', 'Other-Front': 'そして 僕[ぼく] は 彼女[かのじょ] の 息子[むすこ] に 会[あ]った', RemarksFront: 'Read this sentence aloud.', RemarksBack: 'And as for me, I met her son.' }),
       }),
     ]);
   });

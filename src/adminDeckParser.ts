@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import initSqlJs from 'sql.js';
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { ankiField, type AnkiFieldConcept } from './ankiFields';
+import { cardContent, type DeckProfileId } from './deckMapper';
 import { validateCuratedCards, type CuratedCardInput } from './cloud/decks';
 
 type AnkiModel = { flds?: Array<{ name?: string }> };
@@ -19,18 +20,30 @@ export async function parseCuratedApkg(buffer: ArrayBuffer): Promise<CuratedCard
   const models = modelFields(database);
   const cards = result.map((row) => {
     const values = String(row[2]).split('\u001f'); const names = models.get(String(row[1]));
+    if (names?.includes('Jlab-Kanji')) return profiledCard(String(row[0]), values, names, 'jlab');
+    if (names?.includes('Word') && names.includes('Word Meaning')) return profiledCard(String(row[0]), values, names, 'kaishi');
     return {
       sourceCardId: String(row[0]),
-      front: field(values, names, 'front', 0),
-      back: field(values, names, 'back', 1),
-      reading: field(values, names, 'reading', 2) || undefined,
-      furigana: field(values, names, 'furigana') || undefined,
-      exampleSentence: field(values, names, 'exampleSentence') || undefined,
-      exampleSentenceTranslation: field(values, names, 'exampleSentenceTranslation') || undefined,
-      exampleSentenceFurigana: field(values, names, 'exampleSentenceFurigana') || undefined,
+      profile: 'simple' as const,
+      fields: {
+        front: field(values, names, 'front', 0), back: field(values, names, 'back', 1), reading: field(values, names, 'reading', 2),
+        furigana: field(values, names, 'furigana'), exampleSentence: field(values, names, 'exampleSentence'),
+        exampleSentenceTranslation: field(values, names, 'exampleSentenceTranslation'), exampleSentenceFurigana: field(values, names, 'exampleSentenceFurigana'),
+      },
     };
-  }).filter((card) => card.front && card.back);
+  }).filter((card) => {
+    const content = cardContent(card.profile ?? 'simple', card.fields ?? {});
+    return content.prompt.length > 0 && content.answer.length > 0;
+  });
   return validateCuratedCards(cards);
+}
+
+/**
+ * Preserve source fields and profile. The shared domain materializer decides
+ * which fields become prompt/answer sections for both local and cloud play.
+ */
+function profiledCard(sourceCardId: string, values: string[], names: string[], profile: DeckProfileId): CuratedCardInput {
+  return { sourceCardId, profile, fields: Object.fromEntries(names.map((name, index) => [name, values[index] ?? ''])) };
 }
 
 function modelFields(database: { exec(sql: string): Array<{ values: unknown[][] }> }) {
