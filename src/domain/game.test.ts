@@ -186,6 +186,17 @@ describe('card queue', () => {
     expect(nextCard([cards[0]], now, 10)?.id).toBe('new');
   });
 
+  it('introduces new cards in their source deck order rather than by card ID', () => {
+    const now = new Date('2026-07-19T12:00:00Z');
+    const cards = [
+      { id: 'anki-99', newPosition: 2, front: '三', back: 'three', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+      { id: 'anki-1', newPosition: 1, front: '二', back: 'two', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+      { id: 'anki-2', newPosition: 0, front: '一', back: 'one', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 },
+    ];
+
+    expect(nextCard(cards, now, 1)?.id).toBe('anki-2');
+  });
+
   it('schedules a graded card with FSRS state and a future due date', () => {
     const now = new Date('2026-07-19T12:00:00Z');
     const card = { id: 'card', front: '空', back: 'sky', state: 'new' as const, dueAt: null, introducedOn: null, intervalDays: 0 };

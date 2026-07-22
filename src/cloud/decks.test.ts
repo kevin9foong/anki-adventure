@@ -86,4 +86,18 @@ describe('cloud deck queue', () => {
     expect(nextCloudCard({ ...input, selectedDeckIds: ['travel'] })).toMatchObject({ sourceCardId: 'due' });
     expect(nextCloudCard({ ...input, selectedDeckIds: ['travel'], progress: input.progress.filter((entry) => entry.sourceCardId !== 'due') })).toBeUndefined();
   });
+
+  it('introduces curated cards in publisher order, independent of their source IDs', () => {
+    const input = {
+      selectedDeckIds: ['core'],
+      cards: [
+        { deckId: 'core', sourceCardId: 'z-last', newPosition: 2, front: '三', back: 'three' },
+        { deckId: 'core', sourceCardId: 'a-first', newPosition: 0, front: '一', back: 'one' },
+        { deckId: 'core', sourceCardId: 'm-middle', newPosition: 1, front: '二', back: 'two' },
+      ],
+      progress: [], now: new Date('2026-07-20T12:00:00.000Z'), dailyNewLimit: 1,
+    };
+
+    expect(nextCloudCard(input)).toMatchObject({ sourceCardId: 'a-first' });
+  });
 });

@@ -2,7 +2,7 @@ import { adminId, deckCards, isHttpResponse, validLabel } from '../../../_lib/ad
 import { isAdmin, json, type CloudEnv, type FunctionContext, unauthorized } from '../../../_lib/cloud';
 import { requestJson } from '../../../_lib/session';
 
-interface DeckCardRow { source_card_id: string; front: string; back: string; reading: string | null; furigana: string | null; example: string | null; example_translation: string | null; example_furigana: string | null; }
+interface DeckCardRow { source_card_id: string; new_position: number; front: string; back: string; reading: string | null; furigana: string | null; example: string | null; example_translation: string | null; example_furigana: string | null; }
 const impact = (added: number, changed: number, retained: number, removed: string[], affectedSaves: number, affectedProgress: number) => ({ added, changed, retained, removed: removed.length, removedSourceCardIds: removed, affectedSaves, affectedProgress });
 
 export async function onRequest(context: FunctionContext<CloudEnv>): Promise<Response> {
@@ -15,7 +15,7 @@ export async function onRequest(context: FunctionContext<CloudEnv>): Promise<Res
 }
 
 async function rows(context: FunctionContext<CloudEnv>, deckId: string) {
-  return (await context.env.DB.prepare('SELECT source_card_id, front, back, reading, furigana, example, example_translation, example_furigana FROM deck_cards WHERE deck_id = ?').bind(deckId).all<DeckCardRow>()).results;
+  return (await context.env.DB.prepare('SELECT source_card_id, new_position, front, back, reading, furigana, example, example_translation, example_furigana FROM deck_cards WHERE deck_id = ? ORDER BY new_position, source_card_id').bind(deckId).all<DeckCardRow>()).results;
 }
 async function get(context: FunctionContext<CloudEnv>, deckId: string) {
   const deck = await context.env.DB.prepare('SELECT id, display_name, published_at FROM curated_decks WHERE id = ?').bind(deckId).first<{ id: string; display_name: string; published_at: string }>();
@@ -44,12 +44,12 @@ async function update(context: FunctionContext<CloudEnv>, deckId: string) {
     statements.push(context.env.DB.prepare(`DELETE FROM cloud_card_progress WHERE deck_id = ? AND source_card_id IN (${removed.map(() => '?').join(',')})`).bind(deckId, ...removed));
     statements.push(context.env.DB.prepare(`DELETE FROM deck_cards WHERE deck_id = ? AND source_card_id IN (${removed.map(() => '?').join(',')})`).bind(deckId, ...removed));
   }
-  for (const card of cards) statements.push(context.env.DB.prepare(`INSERT INTO deck_cards (deck_id, source_card_id, front, back, reading, furigana, example, example_translation, example_furigana) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(deck_id, source_card_id) DO UPDATE SET front=excluded.front, back=excluded.back, reading=excluded.reading, furigana=excluded.furigana, example=excluded.example, example_translation=excluded.example_translation, example_furigana=excluded.example_furigana`).bind(deckId, card.sourceCardId, card.front, card.back, card.reading ?? null, card.furigana ?? null, card.exampleSentence ?? null, card.exampleSentenceTranslation ?? null, card.exampleSentenceFurigana ?? null));
+  for (const [index, card] of cards.entries()) statements.push(context.env.DB.prepare(`INSERT INTO deck_cards (deck_id, source_card_id, new_position, front, back, reading, furigana, example, example_translation, example_furigana) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(deck_id, source_card_id) DO UPDATE SET new_position=excluded.new_position, front=excluded.front, back=excluded.back, reading=excluded.reading, furigana=excluded.furigana, example=excluded.example, example_translation=excluded.example_translation, example_furigana=excluded.example_furigana`).bind(deckId, card.sourceCardId, card.newPosition ?? index, card.front, card.back, card.reading ?? null, card.furigana ?? null, card.exampleSentence ?? null, card.exampleSentenceTranslation ?? null, card.exampleSentenceFurigana ?? null));
   await context.env.DB.batch(statements); return json({ deck: { id: deckId, displayName, cardCount: cards.length }, preview });
 }
 function existingCards(rows: DeckCardRow[]) {
-  return rows.map((card) => ({ sourceCardId: card.source_card_id, front: card.front, back: card.back, reading: card.reading ?? undefined, furigana: card.furigana ?? undefined, exampleSentence: card.example ?? undefined, exampleSentenceTranslation: card.example_translation ?? undefined, exampleSentenceFurigana: card.example_furigana ?? undefined }));
+  return rows.map((card) => ({ sourceCardId: card.source_card_id, newPosition: card.new_position, front: card.front, back: card.back, reading: card.reading ?? undefined, furigana: card.furigana ?? undefined, exampleSentence: card.example ?? undefined, exampleSentenceTranslation: card.example_translation ?? undefined, exampleSentenceFurigana: card.example_furigana ?? undefined }));
 }
 async function remove(context: FunctionContext<CloudEnv>, deckId: string) {
   const body = await requestJson(context.request); if (isHttpResponse(body)) return body;

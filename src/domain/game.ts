@@ -11,6 +11,8 @@ export const ANKI_DAY_CUTOFF_HOUR = 4;
 
 export interface StudyCard {
   id: string;
+  /** Stable source-deck position used when introducing unseen cards. */
+  newPosition?: number;
   front: string;
   back: string;
   reading?: string;
@@ -126,6 +128,7 @@ export function rollDailyNewLimit(limitDate: string, extraNewCardsToday: number 
 
 const dueAtOrInfinity = (card: StudyCard) => card.dueAt ? new Date(card.dueAt).getTime() : Number.POSITIVE_INFINITY;
 const byDueThenId = (a: StudyCard, b: StudyCard) => dueAtOrInfinity(a) - dueAtOrInfinity(b) || a.id.localeCompare(b.id);
+const byNewPositionThenId = (a: StudyCard, b: StudyCard) => (a.newPosition ?? Number.POSITIVE_INFINITY) - (b.newPosition ?? Number.POSITIVE_INFINITY) || a.id.localeCompare(b.id);
 
 /**
  * The order used by Anki's scheduler: intraday learning/relearning within the
@@ -137,7 +140,7 @@ export function nextCard(cards: StudyCard[], now: Date, dailyNewLimit: number): 
   if (intraday.length) return intraday[0];
   const reviews = cards.filter((card) => card.state === 'review' && dueAtOrInfinity(card) <= nextStudyDayAt(now).getTime()).sort(byDueThenId);
   if (reviews.length) return reviews[0];
-  return cardCounts(cards, now, dailyNewLimit).new > 0 ? cards.filter((card) => card.state === 'new').sort((a, b) => a.id.localeCompare(b.id))[0] : undefined;
+  return cardCounts(cards, now, dailyNewLimit).new > 0 ? cards.filter((card) => card.state === 'new').sort(byNewPositionThenId)[0] : undefined;
 }
 
 export function nextBattleCard(cards: StudyCard[], reviewedCardId: string, now: Date, dailyNewLimit: number): StudyCard | undefined {

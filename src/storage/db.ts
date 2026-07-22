@@ -19,7 +19,11 @@ class AdventureDb extends Dexie {
   cards!: Table<StudyCard, string>;
   saves!: Table<SaveState, string>;
   media!: Table<MediaRecord, string>;
-  constructor() { super('anki-adventure'); this.version(1).stores({ cards: 'id, state, dueAt, introducedOn', saves: 'id', media: 'id' }); }
+  constructor() {
+    super('anki-adventure');
+    this.version(1).stores({ cards: 'id, state, dueAt, introducedOn', saves: 'id', media: 'id' });
+    this.version(2).stores({ cards: 'id, state, dueAt, introducedOn, newPosition', saves: 'id', media: 'id' });
+  }
 }
 export const db = new AdventureDb();
 

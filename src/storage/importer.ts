@@ -46,7 +46,7 @@ function keepScheduling(imported: StudyCard, existing: StudyCard): StudyCard {
 
 async function csvCards(text: string): Promise<StudyCard[]> {
   const rows = text.split(/\r?\n/).filter(Boolean).map((line) => line.split(',').map((field) => field.trim().replace(/^"|"$/g, '')));
-  return rows.slice(rows[0]?.[0]?.toLowerCase().includes('front') ? 1 : 0).filter((row) => row[0] && row[1]).map((row, index) => makeCard(`csv-${Date.now()}-${index}`, row[0], row[1], row[2]));
+  return rows.slice(rows[0]?.[0]?.toLowerCase().includes('front') ? 1 : 0).filter((row) => row[0] && row[1]).map((row, index) => makeCard(`csv-${Date.now()}-${index}`, row[0], row[1], row[2], undefined, undefined, undefined, undefined, index));
 }
 
 async function apkgCards(buffer: ArrayBuffer, onProgress?: ImportDeckOptions['onProgress']): Promise<StudyCard[]> {
@@ -55,7 +55,20 @@ async function apkgCards(buffer: ArrayBuffer, onProgress?: ImportDeckOptions['on
   if (!collection) throw new Error('This .apkg has no Anki collection database.');
   const SQL = await initSqlJs({ locateFile: () => typeof window === 'undefined' ? new URL('../../node_modules/sql.js/dist/sql-wasm.wasm', import.meta.url).pathname : wasmUrl });
   const database = new SQL.Database(new Uint8Array(await collection.async('arraybuffer')));
-  const result = database.exec('SELECT id, mid, flds FROM notes');
+  // `cards.due` is Anki's stored new-card position. Notes alone have no
+  // guaranteed query order, so retain this explicitly before resetting them
+  // to this app's fresh scheduling state.
+  let result: Array<{ values: unknown[][] }>;
+  try {
+    result = database.exec(`SELECT n.id, n.mid, n.flds, MIN(c.due) AS new_position
+      FROM notes n LEFT JOIN cards c ON c.nid = n.id
+      GROUP BY n.id, n.mid, n.flds
+      ORDER BY new_position, n.id`);
+  } catch {
+    // Minimal test/export collections can omit `cards`; note IDs retain a
+    // deterministic fallback order in that case.
+    result = database.exec('SELECT id, mid, flds, id AS new_position FROM notes ORDER BY id');
+  }
   const rows = result[0]?.values ?? [];
   const modelFields = ankiModelFields(database);
   const mediaMapFile = zip.file('media');
@@ -67,7 +80,7 @@ async function apkgCards(buffer: ArrayBuffer, onProgress?: ImportDeckOptions['on
     return makeCard(
       `anki-${row[0]}`,
       field('front', 0), field('back', 1), field('reading', 2), field('furigana'),
-      field('exampleSentence'), field('exampleSentenceTranslation'), field('exampleSentenceFurigana'),
+      field('exampleSentence'), field('exampleSentenceTranslation'), field('exampleSentenceFurigana'), Number(row[3] ?? row[0]),
     );
   }).filter((card) => card.front && card.back);
   onProgress?.({ stage: 'cards', completed: cards.length, total: cards.length });
@@ -93,9 +106,9 @@ function ankiModelFields(database: { exec: (sql: string) => Array<{ values: unkn
   }
 }
 
-function makeCard(id: string, front: string, back: string, reading?: string, furigana?: string, exampleSentence?: string, exampleSentenceTranslation?: string, exampleSentenceFurigana?: string): StudyCard {
+function makeCard(id: string, front: string, back: string, reading?: string, furigana?: string, exampleSentence?: string, exampleSentenceTranslation?: string, exampleSentenceFurigana?: string, newPosition?: number): StudyCard {
   return {
-    id, front, back, reading, furigana: furigana || undefined,
+    id, newPosition, front, back, reading, furigana: furigana || undefined,
     exampleSentence: exampleSentence || undefined, exampleSentenceTranslation: exampleSentenceTranslation || undefined,
     exampleSentenceFurigana: exampleSentenceFurigana || undefined,
     state: 'new', dueAt: null, introducedOn: null, intervalDays: 0, reps: 0,

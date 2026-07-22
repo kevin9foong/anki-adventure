@@ -21,8 +21,8 @@ async function create(context: FunctionContext<CloudEnv>) {
   const cards = deckCards(body.cards); if (isHttpResponse(cards)) return cards;
   const id = crypto.randomUUID(); const now = new Date().toISOString();
   const statements = [context.env.DB.prepare('INSERT INTO curated_decks (id, display_name, published_at) VALUES (?, ?, ?)').bind(id, displayName, now),
-    ...cards.map((card) => context.env.DB.prepare(`INSERT INTO deck_cards (deck_id, source_card_id, front, back, reading, furigana, example, example_translation, example_furigana)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, card.sourceCardId, card.front, card.back, card.reading ?? null, card.furigana ?? null, card.exampleSentence ?? null, card.exampleSentenceTranslation ?? null, card.exampleSentenceFurigana ?? null))];
+    ...cards.map((card, index) => context.env.DB.prepare(`INSERT INTO deck_cards (deck_id, source_card_id, new_position, front, back, reading, furigana, example, example_translation, example_furigana)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, card.sourceCardId, card.newPosition ?? index, card.front, card.back, card.reading ?? null, card.furigana ?? null, card.exampleSentence ?? null, card.exampleSentenceTranslation ?? null, card.exampleSentenceFurigana ?? null))];
   await context.env.DB.batch(statements);
   return json({ deck: { id, displayName, publishedAt: now, cardCount: cards.length } }, { status: 201 });
 }

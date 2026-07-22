@@ -2,6 +2,8 @@ import { ANKI_LEARN_AHEAD_MINUTES, nextStudyDayAt, studyDayKey, type CardState, 
 
 export interface CuratedCardInput {
   sourceCardId: string;
+  /** Zero-based source-deck position. The publisher's input sequence is used when omitted. */
+  newPosition?: number;
   front: string;
   back: string;
   reading?: string;
@@ -42,7 +44,8 @@ export interface CloudQueueInput {
 
 export class InvalidCuratedDeckError extends Error {}
 
-const aliases: Record<keyof Omit<CuratedCardInput, 'sourceCardId'>, string[]> = {
+type CuratedTextField = Exclude<keyof CuratedCardInput, 'sourceCardId' | 'newPosition'>;
+const aliases: Record<CuratedTextField, string[]> = {
   front: ['front', 'word', 'expression', 'vocabulary', 'vocab', 'japanese', 'term'],
   back: ['back', 'wordmeaning', 'meaning', 'definition', 'translation', 'english', 'englishmeaning'],
   reading: ['reading', 'wordreading', 'pronunciation', 'kana'],
@@ -87,7 +90,7 @@ export function validateCuratedCards(cards: CuratedCardInput[]): CuratedCardInpu
     if (seen.has(sourceCardId)) throw new InvalidCuratedDeckError(`Duplicate source card ID: ${sourceCardId}`);
     seen.add(sourceCardId);
     const normalized = {
-      ...card, sourceCardId, front: strip(card.front), back: strip(card.back),
+      ...card, sourceCardId, ...(card.newPosition === undefined ? {} : { newPosition: card.newPosition }), front: strip(card.front), back: strip(card.back),
       reading: optionalText(card.reading), furigana: optionalText(card.furigana),
       exampleSentence: optionalText(card.exampleSentence), exampleSentenceTranslation: optionalText(card.exampleSentenceTranslation),
       exampleSentenceFurigana: optionalText(card.exampleSentenceFurigana),
@@ -128,7 +131,10 @@ export function nextCloudCard(input: CloudQueueInput): CloudQueueCard | undefine
   const reviews = cards.filter((card) => card.state === 'review' && dueAt(card) <= nextStudyDayAt(input.now).getTime());
   if (reviews.length) return choose(earliest(reviews, dueAt));
   const introducedToday = cards.filter((card) => card.introducedOn === studyDayKey(input.now)).length;
-  return introducedToday < Math.max(0, input.dailyNewLimit) ? choose(cards.filter((card) => card.state === 'new')) : undefined;
+  if (introducedToday >= Math.max(0, input.dailyNewLimit)) return undefined;
+  const newCards = cards.filter((card) => card.state === 'new');
+  const firstPosition = Math.min(...newCards.map((card) => card.newPosition ?? Number.POSITIVE_INFINITY));
+  return choose(newCards.filter((card) => (card.newPosition ?? Number.POSITIVE_INFINITY) === firstPosition));
 }
 
 function earliest(cards: CloudQueueCard[], dueAt: (card: CloudQueueCard) => number) {

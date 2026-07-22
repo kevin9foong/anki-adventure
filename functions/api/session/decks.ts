@@ -35,22 +35,22 @@ export async function onRequest(context: FunctionContext<CloudEnv>): Promise<Res
 }
 
 interface SelectedDeckRow {
-  deck_id: string; display_name: string; source_card_id: string | null; front: string | null; back: string | null; reading: string | null; furigana: string | null; example: string | null; example_translation: string | null; example_furigana: string | null;
+  deck_id: string; display_name: string; source_card_id: string | null; new_position: number | null; front: string | null; back: string | null; reading: string | null; furigana: string | null; example: string | null; example_translation: string | null; example_furigana: string | null;
   state: string | null; due_at: string | null; introduced_on: string | null; interval_days: number | null; stability: number | null; difficulty: number | null;
   reps: number | null; lapses: number | null; learning_steps: number | null; last_reviewed_at: string | null;
 }
 
 async function selectedDecks(context: FunctionContext<CloudEnv>, saveId: string, revision: number): Promise<Response> {
-  const { results } = await context.env.DB.prepare(`SELECT d.id AS deck_id, d.display_name, c.source_card_id, c.front, c.back, c.reading, c.furigana, c.example, c.example_translation, c.example_furigana,
+  const { results } = await context.env.DB.prepare(`SELECT d.id AS deck_id, d.display_name, c.source_card_id, c.new_position, c.front, c.back, c.reading, c.furigana, c.example, c.example_translation, c.example_furigana,
     p.state, p.due_at, p.introduced_on, p.interval_days, p.stability, p.difficulty, p.reps, p.lapses, p.learning_steps, p.last_reviewed_at
     FROM save_selected_decks selected JOIN curated_decks d ON d.id = selected.deck_id
     LEFT JOIN deck_cards c ON c.deck_id = d.id LEFT JOIN cloud_card_progress p
       ON p.save_id = selected.save_id AND p.deck_id = c.deck_id AND p.source_card_id = c.source_card_id
-    WHERE selected.save_id = ? ORDER BY d.display_name, c.source_card_id`).bind(saveId).all<SelectedDeckRow>();
+    WHERE selected.save_id = ? ORDER BY d.display_name, c.new_position, c.source_card_id`).bind(saveId).all<SelectedDeckRow>();
   const decks = new Map<string, { id: string; displayName: string; cards: unknown[] }>();
   for (const row of results) {
     const deck = decks.get(row.deck_id) ?? { id: row.deck_id, displayName: row.display_name, cards: [] };
-    if (row.source_card_id !== null) deck.cards.push({ sourceCardId: row.source_card_id, front: row.front!, back: row.back!, reading: row.reading ?? undefined, furigana: row.furigana ?? undefined, exampleSentence: row.example ?? undefined, exampleSentenceTranslation: row.example_translation ?? undefined, exampleSentenceFurigana: row.example_furigana ?? undefined,
+    if (row.source_card_id !== null) deck.cards.push({ sourceCardId: row.source_card_id, newPosition: row.new_position!, front: row.front!, back: row.back!, reading: row.reading ?? undefined, furigana: row.furigana ?? undefined, exampleSentence: row.example ?? undefined, exampleSentenceTranslation: row.example_translation ?? undefined, exampleSentenceFurigana: row.example_furigana ?? undefined,
       progress: row.state === null ? null : { state: row.state, dueAt: row.due_at, introducedOn: row.introduced_on, intervalDays: row.interval_days,
         stability: row.stability, difficulty: row.difficulty, reps: row.reps, lapses: row.lapses, learningSteps: row.learning_steps, lastReviewedAt: row.last_reviewed_at } });
     decks.set(row.deck_id, deck);
