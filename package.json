@@ -7,6 +7,7 @@
     "dev": "concurrently --kill-others-on-fail --names app,db \"npm run dev:app\" \"npm run dev:db\"",
     "dev:app": "vite --host 0.0.0.0",
     "dev:db": "npm run d1:migrate:local && wrangler pages dev public --ip 0.0.0.0 --port 8788",
+    "dev:cloud": "VITE_DISABLE_SERVICE_WORKER=1 npm run build && npm run d1:migrate:local && wrangler pages dev dist --ip 0.0.0.0 --port 8788",
     "d1:migrate:local": "wrangler d1 migrations apply anki-adventure --local",
     "deploy": "npm run deploy:db && npm run deploy:app",
     "deploy:db": "wrangler d1 migrations apply anki-adventure --remote",
