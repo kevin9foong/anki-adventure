@@ -12,11 +12,13 @@ export class OverworldScene extends Phaser.Scene {
   private position = { x: 7, y: 8 };
   private readonly tile = 32;
   constructor() { super('overworld'); }
-  create(data: { onEncounter: () => void; onHeal: () => void; onTrainer: () => void; onGym: () => void }) {
-    this.encounter = data.onEncounter;
-    this.heal = data.onHeal;
-    this.trainer = data.onTrainer;
-    this.gym = data.onGym;
+  create(data: Partial<{ onEncounter: () => void; onHeal: () => void; onTrainer: () => void; onGym: () => void }> = {}) {
+    // Phaser auto-starts the first configured scene before createGame can
+    // attach its callbacks. The ready-event restart supplies the real ones.
+    this.encounter = data.onEncounter ?? (() => undefined);
+    this.heal = data.onHeal ?? (() => undefined);
+    this.trainer = data.onTrainer ?? (() => undefined);
+    this.gym = data.onGym ?? (() => undefined);
     this.cameras.main.setBackgroundColor('#13233d');
     this.drawMap();
     this.player = this.createPlayerSprite(this.position.x * this.tile + 16, this.position.y * this.tile + 16);
